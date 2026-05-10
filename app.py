@@ -571,7 +571,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -806,5 +806,278 @@ elif mode == "Video Battle ⚔️":
                 else: st.error("Salah satu atau kedua video tidak ditemukan.")
         else: st.warning("Masukkan kedua link video!")
 
+elif mode == "Competitor Tracker 🕵️":
+    st.subheader("🕵️ Competitor Tracker — Bandingkan Channel")
+    st.markdown("Masukkan 2–3 link channel YouTube untuk dibandingkan strateginya.")
+
+    def extract_channel_id(url_or_id):
+        """Ekstrak channel ID dari berbagai format URL YouTube"""
+        import re
+        if not url_or_id:
+            return None, None
+        # Format @handle
+        handle_match = re.search(r'youtube\.com\/@([\w.-]+)', url_or_id)
+        if handle_match:
+            return None, handle_match.group(1)
+        # Format /channel/UC...
+        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', url_or_id)
+        if channel_match:
+            return channel_match.group(1), None
+        # Format /c/name atau /user/name
+        custom_match = re.search(r'youtube\.com\/(?:c\/|user\/)([\w-]+)', url_or_id)
+        if custom_match:
+            return None, custom_match.group(1)
+        # Jika langsung channel ID
+        if url_or_id.startswith('UC') and len(url_or_id) > 20:
+            return url_or_id, None
+        return None, url_or_id
+
+    def analyze_channel(url_or_id):
+        """Ambil data channel dan 10 video terakhir dari YouTube API"""
+        try:
+            youtube = build('youtube', 'v3', developerKey=API_KEY)
+            channel_id, handle = extract_channel_id(url_or_id)
+
+            # Cari channel berdasarkan handle jika tidak ada ID
+            if not channel_id and handle:
+                search_resp = youtube.search().list(
+                    part="snippet", q=handle, type="channel", maxResults=1
+                ).execute()
+                if search_resp['items']:
+                    channel_id = search_resp['items'][0]['snippet']['channelId']
+
+            if not channel_id:
+                return None
+
+            # Ambil info channel
+            ch_resp = youtube.channels().list(
+                part="snippet,statistics,contentDetails",
+                id=channel_id
+            ).execute()
+
+            if not ch_resp['items']:
+                return None
+
+            ch = ch_resp['items'][0]
+            name = ch['snippet']['title']
+            description = ch['snippet'].get('description', '')[:200]
+            subscribers = int(ch['statistics'].get('subscriberCount', 0))
+            total_views = int(ch['statistics'].get('viewCount', 0))
+            total_videos = int(ch['statistics'].get('videoCount', 0))
+            playlist_id = ch['contentDetails']['relatedPlaylists']['uploads']
+
+            # Ambil 10 video terakhir
+            pl_resp = youtube.playlistItems().list(
+                part="contentDetails",
+                playlistId=playlist_id,
+                maxResults=10
+            ).execute()
+
+            video_ids = [item['contentDetails']['videoId'] for item in pl_resp['items']]
+
+            # Ambil statistik video
+            vids_resp = youtube.videos().list(
+                part="snippet,statistics",
+                id=','.join(video_ids)
+            ).execute()
+
+            videos = []
+            total_engagement = 0
+            all_tags = []
+            upload_days = []
+
+            for v in vids_resp['items']:
+                stats = v.get('statistics', {})
+                snippet = v['snippet']
+                views = int(stats.get('viewCount', 0))
+                likes = int(stats.get('likeCount', 0))
+                comments = int(stats.get('commentCount', 0))
+                engagement = ((likes + comments) / views * 100) if views > 0 else 0
+                total_engagement += engagement
+
+                pub_date = snippet.get('publishedAt', '')
+                if pub_date:
+                    from datetime import datetime, timezone
+                    dt = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%SZ")
+                    upload_days.append(dt.strftime("%A"))
+
+                tags = snippet.get('tags', [])
+                all_tags.extend(tags[:5])
+
+                videos.append({
+                    "title": snippet['title'],
+                    "views": views,
+                    "likes": likes,
+                    "comments": comments,
+                    "engagement": engagement,
+                    "published": pub_date[:10] if pub_date else "N/A",
+                    "tags": tags
+                })
+
+            avg_engagement = total_engagement / len(videos) if videos else 0
+            avg_views = sum(v['views'] for v in videos) / len(videos) if videos else 0
+
+            # Hitung frekuensi upload per hari
+            from collections import Counter
+            day_freq = Counter(upload_days)
+            most_active_day = day_freq.most_common(1)[0][0] if day_freq else "N/A"
+
+            # Top tags
+            tag_freq = Counter(all_tags)
+            top_tags = [t[0] for t in tag_freq.most_common(8)]
+
+            # Video terbaik
+            top_video = max(videos, key=lambda x: x['engagement']) if videos else None
+
+            return {
+                "name": name,
+                "description": description,
+                "subscribers": subscribers,
+                "total_views": total_views,
+                "total_videos": total_videos,
+                "avg_engagement": avg_engagement,
+                "avg_views": avg_views,
+                "most_active_day": most_active_day,
+                "top_tags": top_tags,
+                "top_video": top_video,
+                "recent_videos": videos,
+                "upload_days": upload_days,
+            }
+        except Exception as e:
+            st.error(f"Error menganalisis channel: {e}")
+            return None
+
+    # --- INPUT CHANNEL ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        ch_input_a = st.text_input("🔴 Channel A", placeholder="https://youtube.com/@channel")
+    with col2:
+        ch_input_b = st.text_input("🔵 Channel B", placeholder="https://youtube.com/@channel")
+    with col3:
+        ch_input_c = st.text_input("🟢 Channel C (opsional)", placeholder="https://youtube.com/@channel")
+
+    if st.button("🔍 Analisis Competitor", use_container_width=True):
+        inputs = [i for i in [ch_input_a, ch_input_b, ch_input_c] if i.strip()]
+        labels = ["🔴 Channel A", "🔵 Channel B", "🟢 Channel C"]
+        colors = ["red", "blue", "green"]
+
+        if len(inputs) < 2:
+            st.warning("Masukkan minimal 2 channel untuk dibandingkan!")
+        else:
+            channels = []
+            for i, inp in enumerate(inputs):
+                with st.spinner(f"Menganalisis {labels[i]}..."):
+                    data = analyze_channel(inp)
+                    if data:
+                        data['label'] = labels[i]
+                        data['color'] = colors[i]
+                        channels.append(data)
+                    else:
+                        st.error(f"{labels[i]}: Channel tidak ditemukan.")
+
+            if len(channels) >= 2:
+                st.success(f"✅ Berhasil menganalisis {len(channels)} channel!")
+                st.divider()
+
+                # --- OVERVIEW METRICS ---
+                st.subheader("📊 Overview Channel")
+                cols = st.columns(len(channels))
+                for i, ch in enumerate(channels):
+                    with cols[i]:
+                        st.markdown(f"### {ch['label']}")
+                        st.markdown(f"**{ch['name']}**")
+                        st.metric("Subscribers", f"{ch['subscribers']:,}")
+                        st.metric("Total Views", f"{ch['total_views']:,}")
+                        st.metric("Total Video", f"{ch['total_videos']:,}")
+                        st.metric("Avg Engagement (10 vid)", f"{ch['avg_engagement']:.2f}%")
+                        st.metric("Avg Views (10 vid)", f"{int(ch['avg_views']):,}")
+
+                st.divider()
+
+                # --- PEMENANG PER KATEGORI ---
+                st.subheader("🏆 Siapa yang Unggul?")
+                categories = {
+                    "👥 Subscribers": ("subscribers", lambda x: f"{x:,}"),
+                    "👁️ Avg Views": ("avg_views", lambda x: f"{int(x):,}"),
+                    "💬 Avg Engagement": ("avg_engagement", lambda x: f"{x:.2f}%"),
+                    "🎬 Total Video": ("total_videos", lambda x: f"{x:,}"),
+                }
+                cat_cols = st.columns(len(categories))
+                for i, (cat_name, (key, fmt)) in enumerate(categories.items()):
+                    with cat_cols[i]:
+                        winner = max(channels, key=lambda x: x[key])
+                        st.markdown(f"**{cat_name}**")
+                        st.success(f"🏆 {winner['name']}\n\n{fmt(winner[key])}")
+
+                st.divider()
+
+                # --- FREKUENSI UPLOAD ---
+                st.subheader("📅 Pola Upload")
+                up_cols = st.columns(len(channels))
+                for i, ch in enumerate(channels):
+                    with up_cols[i]:
+                        st.markdown(f"**{ch['label']} — {ch['name']}**")
+                        st.markdown(f"📌 Hari paling aktif: **{ch['most_active_day']}**")
+                        from collections import Counter
+                        day_counts = Counter(ch['upload_days'])
+                        for day, count in day_counts.most_common():
+                            st.caption(f"{day}: {count}x upload")
+
+                st.divider()
+
+                # --- TOP TAGS ---
+                st.subheader("🏷️ Tags yang Paling Sering Dipakai")
+                tag_cols = st.columns(len(channels))
+                for i, ch in enumerate(channels):
+                    with tag_cols[i]:
+                        st.markdown(f"**{ch['label']} — {ch['name']}**")
+                        if ch['top_tags']:
+                            for tag in ch['top_tags']:
+                                st.markdown(f"🔹 `{tag}`")
+                        else:
+                            st.info("Tidak ada tags ditemukan.")
+
+                st.divider()
+
+                # --- VIDEO TERBAIK ---
+                st.subheader("🎬 Video Terbaik (Engagement Tertinggi)")
+                vid_cols = st.columns(len(channels))
+                for i, ch in enumerate(channels):
+                    with vid_cols[i]:
+                        st.markdown(f"**{ch['label']} — {ch['name']}**")
+                        if ch['top_video']:
+                            tv = ch['top_video']
+                            st.markdown(f"📹 *{tv['title']}*")
+                            st.markdown(f"👁️ {tv['views']:,} views | 👍 {tv['likes']:,} | 💬 {tv['comments']:,}")
+                            st.markdown(f"🔥 Engagement: **{tv['engagement']:.2f}%**")
+                            st.caption(f"Upload: {tv['published']}")
+
+                st.divider()
+
+                # --- INSIGHT STRATEGI ---
+                st.subheader("💡 Insight Strategi")
+                top_eng = max(channels, key=lambda x: x['avg_engagement'])
+                top_sub = max(channels, key=lambda x: x['subscribers'])
+                top_views = max(channels, key=lambda x: x['avg_views'])
+
+                st.info(f"🏆 **Channel dengan engagement terbaik:** {top_eng['name']} ({top_eng['avg_engagement']:.2f}%) — pelajari gaya konten dan CTA mereka.")
+                st.info(f"👥 **Channel dengan subscriber terbanyak:** {top_sub['name']} ({top_sub['subscribers']:,}) — analisis topik yang paling sering mereka angkat.")
+                st.info(f"👁️ **Channel dengan rata-rata views tertinggi:** {top_views['name']} ({int(top_views['avg_views']):,}) — pelajari strategi thumbnail dan judul mereka.")
+
+                # Gap analisis tags
+                if len(channels) >= 2:
+                    st.markdown("#### 🕵️ Tag Gap — Tags Eksklusif per Channel")
+                    all_tag_sets = [set(ch['top_tags']) for ch in channels]
+                    for i, ch in enumerate(channels):
+                        other_tags = set()
+                        for j, other in enumerate(channels):
+                            if i != j:
+                                other_tags.update(set(other['top_tags']))
+                        unique = set(ch['top_tags']) - other_tags
+                        if unique:
+                            st.markdown(f"**{ch['label']} — {ch['name']}** punya tags eksklusif:")
+                            for t in unique:
+                                st.markdown(f"✨ `{t}`")
+
     st.markdown("---")
-    st.caption("YouTube Viral Analyser Pro v5.0 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")
+    st.caption("YouTube Viral Analyser Pro v5.1 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")
