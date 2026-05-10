@@ -527,10 +527,10 @@ st.set_page_config(page_title="YouTube Viral Analyser Pro", page_icon="🚀", la
 # --- AUTENTIKASI SEDERHANA ---
 def check_password(username, password):
     try:
-        users = st.secrets["users"]
-        if username in users:
-            hashed = users[username]["password"].encode("utf-8")
-            return bcrypt.checkpw(password.encode("utf-8"), hashed)
+        # Format secrets: USER_admin = "password123"
+        key = f"USER_{username}"
+        stored_password = st.secrets[key]
+        return password == stored_password
     except Exception:
         # Fallback lokal
         if username == "admin" and password == "password123":
