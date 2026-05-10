@@ -5,6 +5,9 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import time
+import streamlit_authenticator as stauth
+import yaml
+from yaml.loader import SafeLoader
 
 # --- KONFIGURASI ---
 # Untuk development lokal: isi langsung di sini
@@ -523,17 +526,62 @@ def show_disclaimer():
 # --- TAMPILAN DASHBOARD ---
 st.set_page_config(page_title="YouTube Viral Analyser Pro", page_icon="🚀", layout="wide")
 
-st.title("🚀 YouTube Viral Analyser Pro")
-st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
+# --- AUTENTIKASI ---
+# Data user disimpan di Streamlit Secrets
+# Format di secrets.toml:
+# [credentials.usernames.admin]
+# name = "Admin"
+# password = "hashed_password"
 
-show_disclaimer()
+try:
+    credentials = {
+        "usernames": dict(st.secrets["credentials"])
+    }
+except Exception:
+    # Fallback untuk development lokal — GANTI PASSWORD SEBELUM DEPLOY
+    credentials = {
+        "usernames": {
+            "admin": {
+                "name": "Admin",
+                "password": stauth.Hasher(["admin123"]).generate()[0]
+            }
+        }
+    }
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️"])
+authenticator = stauth.Authenticate(
+    credentials,
+    "youtube_analyser_cookie",   # cookie name
+    "abcdef1234567890",          # cookie key (ganti dengan string acak)
+    cookie_expiry_days=7
+)
 
-st.sidebar.divider()
-if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
-    st.cache_data.clear()
-    st.rerun()
+name, authentication_status, username = authenticator.login("🔐 Login — YouTube Viral Analyser Pro", "main")
+
+if authentication_status is False:
+    st.error("❌ Username atau password salah!")
+    st.stop()
+
+elif authentication_status is None:
+    st.warning("Silakan login untuk menggunakan aplikasi.")
+    st.stop()
+
+elif authentication_status:
+    # Tombol logout di sidebar
+    authenticator.logout("🚪 Logout", "sidebar")
+    st.sidebar.markdown(f"👤 Login sebagai: **{name}**")
+    st.sidebar.divider()
+
+    st.title("🚀 YouTube Viral Analyser Pro")
+    st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
+
+    show_disclaimer()
+
+    mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️"])
+
+    st.sidebar.divider()
+    if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 if mode == "Single Analysis":
     st.subheader("🔍 Analisis Video Tunggal")
@@ -763,5 +811,5 @@ elif mode == "Video Battle ⚔️":
                 else: st.error("Salah satu atau kedua video tidak ditemukan.")
         else: st.warning("Masukkan kedua link video!")
 
-st.markdown("---")
-st.caption("YouTube Viral Analyser Pro v5.0 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")
+    st.markdown("---")
+    st.caption("YouTube Viral Analyser Pro v5.0 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")

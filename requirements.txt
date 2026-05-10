@@ -3,3 +3,6 @@ google-api-python-client
 requests
 beautifulsoup4
 lxml
+streamlit-authenticator==0.2.3
+PyYAML
+bcrypt
