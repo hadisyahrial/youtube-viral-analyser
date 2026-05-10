@@ -5,9 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import time
-import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
+import bcrypt
 
 # --- KONFIGURASI ---
 # Untuk development lokal: isi langsung di sini
@@ -526,62 +524,59 @@ def show_disclaimer():
 # --- TAMPILAN DASHBOARD ---
 st.set_page_config(page_title="YouTube Viral Analyser Pro", page_icon="🚀", layout="wide")
 
-# --- AUTENTIKASI ---
-# Data user disimpan di Streamlit Secrets
-# Format di secrets.toml:
-# [credentials.usernames.admin]
-# name = "Admin"
-# password = "hashed_password"
+# --- AUTENTIKASI SEDERHANA ---
+def check_password(username, password):
+    try:
+        users = st.secrets["users"]
+        if username in users:
+            hashed = users[username]["password"].encode("utf-8")
+            return bcrypt.checkpw(password.encode("utf-8"), hashed)
+    except Exception:
+        # Fallback lokal
+        if username == "admin" and password == "password123":
+            return True
+    return False
 
-try:
-    credentials = {
-        "usernames": dict(st.secrets["credentials"])
-    }
-except Exception:
-    # Fallback untuk development lokal — GANTI PASSWORD SEBELUM DEPLOY
-    credentials = {
-        "usernames": {
-            "admin": {
-                "name": "Admin",
-                "password": stauth.Hasher(["admin123"]).generate()[0]
-            }
-        }
-    }
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-authenticator = stauth.Authenticate(
-    credentials,
-    "youtube_analyser_cookie",   # cookie name
-    "abcdef1234567890",          # cookie key (ganti dengan string acak)
-    cookie_expiry_days=7
-)
-
-name, authentication_status, username = authenticator.login("🔐 Login — YouTube Viral Analyser Pro", "main")
-
-if authentication_status is False:
-    st.error("❌ Username atau password salah!")
+if not st.session_state.authenticated:
+    st.title("🔐 Login — YouTube Viral Analyser Pro")
+    st.markdown("Masukkan username dan password untuk melanjutkan.")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            if check_password(username, password):
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.error("❌ Username atau password salah!")
     st.stop()
+# --- KONTEN UTAMA (setelah login) ---
+# Tombol logout di sidebar
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.rerun()
+st.sidebar.markdown(f"👤 Login sebagai: **{st.session_state.username}**")
+st.sidebar.divider()
 
-elif authentication_status is None:
-    st.warning("Silakan login untuk menggunakan aplikasi.")
-    st.stop()
+st.title("🚀 YouTube Viral Analyser Pro")
+st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
 
-elif authentication_status:
-    # Tombol logout di sidebar
-    authenticator.logout("🚪 Logout", "sidebar")
-    st.sidebar.markdown(f"👤 Login sebagai: **{name}**")
-    st.sidebar.divider()
+show_disclaimer()
 
-    st.title("🚀 YouTube Viral Analyser Pro")
-    st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️"])
 
-    show_disclaimer()
-
-    mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️"])
-
-    st.sidebar.divider()
-    if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+st.sidebar.divider()
+if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 if mode == "Single Analysis":
     st.subheader("🔍 Analisis Video Tunggal")
