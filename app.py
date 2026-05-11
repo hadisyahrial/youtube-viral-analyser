@@ -1060,14 +1060,138 @@ elif mode == "Competitor Tracker 🕵️":
                 top_sub = max(channels, key=lambda x: x['subscribers'])
                 top_views = max(channels, key=lambda x: x['avg_views'])
 
-                st.info(f"🏆 **Channel dengan engagement terbaik:** {top_eng['name']} ({top_eng['avg_engagement']:.2f}%) — pelajari gaya konten dan CTA mereka.")
-                st.info(f"👥 **Channel dengan subscriber terbanyak:** {top_sub['name']} ({top_sub['subscribers']:,}) — analisis topik yang paling sering mereka angkat.")
-                st.info(f"👁️ **Channel dengan rata-rata views tertinggi:** {top_views['name']} ({int(top_views['avg_views']):,}) — pelajari strategi thumbnail dan judul mereka.")
+                def generate_content_style_insight(ch):
+                    """Analisis gaya konten & CTA dari data video nyata channel"""
+                    videos = ch['recent_videos']
+                    if not videos:
+                        return None
+
+                    # Analisis pola judul
+                    titles = [v['title'] for v in videos]
+                    avg_title_len = sum(len(t) for t in titles) / len(titles)
+                    has_question = sum(1 for t in titles if '?' in t)
+                    has_number = sum(1 for t in titles if any(c.isdigit() for c in t))
+                    has_caps = sum(1 for t in titles if sum(1 for c in t if c.isupper()) > 3)
+                    has_exclaim = sum(1 for t in titles if '!' in t)
+
+                    # Analisis CTA dari rasio komentar
+                    avg_comment_ratio = sum(
+                        (v['comments'] / v['views'] * 100) if v['views'] > 0 else 0
+                        for v in videos
+                    ) / len(videos)
+
+                    avg_like_ratio = sum(
+                        (v['likes'] / v['views'] * 100) if v['views'] > 0 else 0
+                        for v in videos
+                    ) / len(videos)
+
+                    # Top performing video pattern
+                    top_v = max(videos, key=lambda x: x['engagement'])
+
+                    style_notes = []
+                    cta_notes = []
+
+                    # Gaya judul
+                    if has_question >= len(titles) * 0.3:
+                        style_notes.append(f"❓ **Sering pakai judul pertanyaan** ({has_question} dari {len(titles)} video) — memancing rasa ingin tahu penonton.")
+                    if has_number >= len(titles) * 0.3:
+                        style_notes.append(f"🔢 **Sering pakai angka di judul** ({has_number} dari {len(titles)} video) — memberi kesan konkret dan terstruktur.")
+                    if has_caps >= len(titles) * 0.3:
+                        style_notes.append(f"🔠 **Sering pakai huruf kapital** ({has_caps} dari {len(titles)} video) — menciptakan urgensi dan emosi.")
+                    if has_exclaim >= len(titles) * 0.3:
+                        style_notes.append(f"❗ **Sering pakai tanda seru** ({has_exclaim} dari {len(titles)} video) — menambah energi dan excitement.")
+                    if avg_title_len < 40:
+                        style_notes.append(f"✂️ **Judul pendek & padat** (rata-rata {avg_title_len:.0f} karakter) — langsung ke poin, mudah dibaca di mobile.")
+                    elif avg_title_len > 60:
+                        style_notes.append(f"📝 **Judul deskriptif panjang** (rata-rata {avg_title_len:.0f} karakter) — detail dan kaya kata kunci SEO.")
+                    else:
+                        style_notes.append(f"⚖️ **Judul seimbang** (rata-rata {avg_title_len:.0f} karakter) — optimal untuk SEO dan keterbacaan.")
+
+                    # Pola CTA dari data
+                    if avg_comment_ratio > 0.5:
+                        cta_notes.append(f"💬 **CTA komentar sangat kuat** (avg {avg_comment_ratio:.2f}%) — kemungkinan sering melempar pertanyaan di akhir video atau meminta pendapat penonton.")
+                    elif avg_comment_ratio > 0.1:
+                        cta_notes.append(f"💬 **CTA komentar cukup aktif** (avg {avg_comment_ratio:.2f}%) — ada dorongan interaksi namun bisa ditingkatkan.")
+                    else:
+                        cta_notes.append(f"💬 **CTA komentar lemah** (avg {avg_comment_ratio:.2f}%) — jarang memancing diskusi di kolom komentar.")
+
+                    if avg_like_ratio > 3:
+                        cta_notes.append(f"👍 **CTA like sangat efektif** (avg {avg_like_ratio:.2f}%) — kemungkinan secara eksplisit meminta like di awal atau akhir video.")
+                    elif avg_like_ratio > 1:
+                        cta_notes.append(f"👍 **CTA like cukup baik** (avg {avg_like_ratio:.2f}%) — penonton cukup terdorong untuk like.")
+                    else:
+                        cta_notes.append(f"👍 **CTA like perlu ditingkatkan** (avg {avg_like_ratio:.2f}%) — penonton kurang terdorong untuk like.")
+
+                    # Video terbaik sebagai contoh nyata
+                    return {
+                        "style_notes": style_notes,
+                        "cta_notes": cta_notes,
+                        "top_video": top_v,
+                        "avg_comment_ratio": avg_comment_ratio,
+                        "avg_like_ratio": avg_like_ratio,
+                    }
+
+                # Insight engagement terbaik
+                eng_insight = generate_content_style_insight(top_eng)
+                with st.expander(f"🏆 Channel Engagement Terbaik: {top_eng['name']} ({top_eng['avg_engagement']:.2f}%) — klik untuk detail gaya konten & CTA", expanded=False):
+                    if eng_insight:
+                        st.markdown("##### 🎨 Gaya Konten")
+                        for note in eng_insight['style_notes']:
+                            st.markdown(f"- {note}")
+                        st.markdown("##### 📣 Pola CTA (Call-to-Action)")
+                        for note in eng_insight['cta_notes']:
+                            st.markdown(f"- {note}")
+                        st.markdown("##### 🎬 Contoh Video Terbaik Mereka")
+                        tv = eng_insight['top_video']
+                        st.info(f"**{tv['title']}**\n\n👁️ {tv['views']:,} views | 👍 {tv['likes']:,} | 💬 {tv['comments']:,} | 🔥 Engagement: {tv['engagement']:.2f}%")
+                        st.caption("💡 Pelajari judul, thumbnail, dan bagaimana video ini diawali — ini adalah formula terbaik channel tersebut.")
+
+                # Insight subscriber terbanyak
+                sub_insight = generate_content_style_insight(top_sub)
+                with st.expander(f"👥 Channel Subscriber Terbanyak: {top_sub['name']} ({top_sub['subscribers']:,}) — klik untuk detail topik & pola konten", expanded=False):
+                    if sub_insight:
+                        from collections import Counter
+                        # Analisis topik dari judul video
+                        all_words = []
+                        for v in top_sub['recent_videos']:
+                            words = [w.lower() for w in v['title'].split() if len(w) > 4]
+                            all_words.extend(words)
+                        common_words = Counter(all_words).most_common(8)
+
+                        st.markdown("##### 🔑 Kata Kunci yang Sering Muncul di Judul")
+                        if common_words:
+                            kw_str = " | ".join([f"`{w}`" for w, _ in common_words])
+                            st.markdown(kw_str)
+                        st.markdown("##### 🎨 Gaya Konten")
+                        for note in sub_insight['style_notes']:
+                            st.markdown(f"- {note}")
+                        st.markdown("##### 🎬 Video Terbaik Mereka")
+                        tv = sub_insight['top_video']
+                        st.info(f"**{tv['title']}**\n\n👁️ {tv['views']:,} views | 👍 {tv['likes']:,} | 💬 {tv['comments']:,} | 🔥 Engagement: {tv['engagement']:.2f}%")
+
+                # Insight views tertinggi
+                views_insight = generate_content_style_insight(top_views)
+                with st.expander(f"👁️ Channel Avg Views Tertinggi: {top_views['name']} ({int(top_views['avg_views']):,}) — klik untuk strategi judul & thumbnail", expanded=False):
+                    if views_insight:
+                        st.markdown("##### 🎨 Pola Judul (Kunci CTR Tinggi)")
+                        for note in views_insight['style_notes']:
+                            st.markdown(f"- {note}")
+                        st.markdown("##### 📋 Contoh Judul Video Terbaru Mereka")
+                        for v in top_views['recent_videos'][:5]:
+                            st.markdown(f"- *{v['title']}* — **{v['views']:,} views**")
+                        st.markdown("##### 💡 Tips Thumbnail")
+                        avg_views_val = top_views['avg_views']
+                        if avg_views_val > 100000:
+                            st.success("Channel ini punya CTR sangat tinggi. Kemungkinan menggunakan thumbnail dengan wajah ekspresif, warna kontras tinggi, dan teks maksimal 3 kata. Tiru formula visual mereka!")
+                        elif avg_views_val > 10000:
+                            st.success("Channel ini punya distribusi yang baik. Fokus pada konsistensi visual branding — warna, font, dan layout thumbnail yang seragam membangun recognition.")
+                        else:
+                            st.info("Views masih berkembang. Eksperimen dengan berbagai gaya thumbnail dan pantau CTR di YouTube Analytics.")
 
                 # Gap analisis tags
                 if len(channels) >= 2:
+                    st.divider()
                     st.markdown("#### 🕵️ Tag Gap — Tags Eksklusif per Channel")
-                    all_tag_sets = [set(ch['top_tags']) for ch in channels]
                     for i, ch in enumerate(channels):
                         other_tags = set()
                         for j, other in enumerate(channels):
