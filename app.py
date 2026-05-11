@@ -571,7 +571,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -1204,4 +1204,297 @@ elif mode == "Competitor Tracker 🕵️":
                                 st.markdown(f"✨ `{t}`")
 
     st.markdown("---")
-    st.caption("YouTube Viral Analyser Pro v5.1 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")
+    st.caption("YouTube Viral Analyser Pro v5.2 | Free Edition — Insight berbasis best practice industri, bukan algoritma resmi YouTube.")
+
+elif mode == "Monetization Estimator 💰":
+    st.subheader("💰 Monetization Estimator")
+    st.markdown("Estimasi potensi penghasilan channel YouTube berdasarkan data video dan benchmark industri.")
+
+    with st.expander("⚠️ Disclaimer Penting — Baca Sebelum Menggunakan", expanded=True):
+        st.warning("""
+        Angka yang ditampilkan adalah **ESTIMASI KASAR** berbasis benchmark industri umum — bukan penghasilan aktual.
+        RPM (Revenue Per Mille) nyata sangat bervariasi tergantung negara audiens, musim iklan, niche spesifik, dan kebijakan AdSense masing-masing creator.
+        Gunakan hasil ini sebagai **gambaran umum**, bukan proyeksi keuangan yang pasti.
+        Tools seperti Social Blade pun menggunakan pendekatan estimasi yang sama.
+        """)
+
+    # --- INPUT ---
+    channel_input = st.text_input("Paste Link Channel YouTube", placeholder="https://www.youtube.com/@channelname")
+
+    niche_options = {
+        "💼 Finance & Bisnis": {"rpm_min": 8, "rpm_max": 15, "sponsorship_mult": 3.0},
+        "💻 Teknologi": {"rpm_min": 5, "rpm_max": 10, "sponsorship_mult": 2.5},
+        "🎓 Edukasi": {"rpm_min": 4, "rpm_max": 9, "sponsorship_mult": 2.0},
+        "🏥 Kesehatan & Lifestyle": {"rpm_min": 3, "rpm_max": 7, "sponsorship_mult": 2.0},
+        "🎮 Gaming": {"rpm_min": 2, "rpm_max": 5, "sponsorship_mult": 1.5},
+        "🎬 Entertainment & Vlog": {"rpm_min": 1, "rpm_max": 4, "sponsorship_mult": 1.5},
+        "🍳 Food & Cooking": {"rpm_min": 2, "rpm_max": 5, "sponsorship_mult": 1.8},
+        "✈️ Travel": {"rpm_min": 3, "rpm_max": 7, "sponsorship_mult": 2.0},
+        "👗 Fashion & Beauty": {"rpm_min": 2, "rpm_max": 6, "sponsorship_mult": 2.2},
+        "⚽ Sport": {"rpm_min": 2, "rpm_max": 5, "sponsorship_mult": 1.8},
+    }
+
+    # Mapping YouTube categoryId ke niche
+    category_to_niche = {
+        "1":  "🎬 Entertainment & Vlog",   # Film & Animation
+        "2":  "⚽ Sport",                   # Autos & Vehicles
+        "10": "🎬 Entertainment & Vlog",   # Music
+        "15": "🐾 Entertainment & Vlog",   # Pets & Animals
+        "17": "⚽ Sport",                   # Sports
+        "19": "✈️ Travel",                  # Travel & Events
+        "20": "🎮 Gaming",                  # Gaming
+        "22": "🎬 Entertainment & Vlog",   # People & Blogs
+        "23": "🎬 Entertainment & Vlog",   # Comedy
+        "24": "🎬 Entertainment & Vlog",   # Entertainment
+        "25": "💼 Finance & Bisnis",        # News & Politics
+        "26": "🏥 Kesehatan & Lifestyle",   # Howto & Style
+        "27": "🎬 Entertainment & Vlog",   # Education (general)
+        "28": "💻 Teknologi",               # Science & Technology
+        "29": "🎬 Entertainment & Vlog",   # Nonprofits & Activism
+    }
+
+    if st.button("💰 Hitung Estimasi Monetisasi", use_container_width=True):
+        if channel_input:
+            with st.spinner("Mengambil data channel & mendeteksi niche..."):
+
+                def extract_channel_id_simple(url_or_id):
+                    handle_match = re.search(r'youtube\.com\/@([\w.-]+)', url_or_id)
+                    if handle_match:
+                        return None, handle_match.group(1)
+                    channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', url_or_id)
+                    if channel_match:
+                        return channel_match.group(1), None
+                    if url_or_id.startswith('UC'):
+                        return url_or_id, None
+                    return None, url_or_id
+
+                def get_channel_monetization_data(url_or_id):
+                    try:
+                        youtube = build('youtube', 'v3', developerKey=API_KEY)
+                        channel_id, handle = extract_channel_id_simple(url_or_id)
+
+                        if not channel_id and handle:
+                            search_resp = youtube.search().list(
+                                part="snippet", q=handle, type="channel", maxResults=1
+                            ).execute()
+                            if search_resp['items']:
+                                channel_id = search_resp['items'][0]['snippet']['channelId']
+
+                        if not channel_id:
+                            return None
+
+                        ch_resp = youtube.channels().list(
+                            part="snippet,statistics,contentDetails",
+                            id=channel_id
+                        ).execute()
+
+                        if not ch_resp['items']:
+                            return None
+
+                        ch = ch_resp['items'][0]
+                        subscribers = int(ch['statistics'].get('subscriberCount', 0))
+                        total_views = int(ch['statistics'].get('viewCount', 0))
+                        total_videos = int(ch['statistics'].get('videoCount', 0))
+                        name = ch['snippet']['title']
+                        playlist_id = ch['contentDetails']['relatedPlaylists']['uploads']
+
+                        # Ambil 10 video terakhir
+                        pl_resp = youtube.playlistItems().list(
+                            part="contentDetails", playlistId=playlist_id, maxResults=10
+                        ).execute()
+                        video_ids = [item['contentDetails']['videoId'] for item in pl_resp['items']]
+
+                        # Ambil statistik + snippet (untuk categoryId & publishedAt)
+                        vids_resp = youtube.videos().list(
+                            part="statistics,snippet", id=','.join(video_ids)
+                        ).execute()
+
+                        views_list = []
+                        likes_list = []
+                        comments_list = []
+                        category_ids = []
+                        pub_dates = []
+
+                        from datetime import datetime, timezone
+                        from collections import Counter
+
+                        for v in vids_resp['items']:
+                            stats = v.get('statistics', {})
+                            snippet = v.get('snippet', {})
+                            views_list.append(int(stats.get('viewCount', 0)))
+                            likes_list.append(int(stats.get('likeCount', 0)))
+                            comments_list.append(int(stats.get('commentCount', 0)))
+
+                            # Kumpulkan categoryId untuk deteksi niche
+                            cat_id = snippet.get('categoryId', '')
+                            if cat_id:
+                                category_ids.append(cat_id)
+
+                            # Kumpulkan tanggal publish untuk hitung frekuensi
+                            pub = snippet.get('publishedAt', '')
+                            if pub:
+                                pub_dates.append(datetime.strptime(pub, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc))
+
+                        avg_views = sum(views_list) / len(views_list) if views_list else 0
+                        avg_likes = sum(likes_list) / len(likes_list) if likes_list else 0
+                        avg_comments = sum(comments_list) / len(comments_list) if comments_list else 0
+                        avg_engagement = ((avg_likes + avg_comments) / avg_views * 100) if avg_views > 0 else 0
+
+                        # Deteksi niche dari categoryId terbanyak
+                        detected_niche = "🎬 Entertainment & Vlog"  # default
+                        if category_ids:
+                            most_common_cat = Counter(category_ids).most_common(1)[0][0]
+                            detected_niche = category_to_niche.get(most_common_cat, "🎬 Entertainment & Vlog")
+
+                        # Hitung frekuensi upload otomatis dari selisih tanggal
+                        detected_monthly_uploads = 4  # default
+                        if len(pub_dates) >= 2:
+                            pub_dates_sorted = sorted(pub_dates, reverse=True)
+                            date_diffs = []
+                            for i in range(len(pub_dates_sorted) - 1):
+                                diff = (pub_dates_sorted[i] - pub_dates_sorted[i+1]).days
+                                if diff > 0:
+                                    date_diffs.append(diff)
+                            if date_diffs:
+                                avg_days_between = sum(date_diffs) / len(date_diffs)
+                                detected_monthly_uploads = max(1, round(30 / avg_days_between))
+
+                        return {
+                            "name": name,
+                            "subscribers": subscribers,
+                            "total_views": total_views,
+                            "total_videos": total_videos,
+                            "avg_views": avg_views,
+                            "avg_engagement": avg_engagement,
+                            "detected_niche": detected_niche,
+                            "detected_monthly_uploads": detected_monthly_uploads,
+                        }
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        return None
+
+                data = get_channel_monetization_data(channel_input)
+
+            if data:
+                # Gunakan niche & frekuensi yang terdeteksi otomatis
+                niche = data['detected_niche']
+                monthly_uploads = data['detected_monthly_uploads']
+                niche_data = niche_options[niche]
+                rpm_min = niche_data["rpm_min"]
+                rpm_max = niche_data["rpm_max"]
+                rpm_avg = (rpm_min + rpm_max) / 2
+                sponsorship_mult = niche_data["sponsorship_mult"]
+
+                avg_views = data['avg_views']
+                subscribers = data['subscribers']
+                avg_engagement = data['avg_engagement']
+
+                # Estimasi views per bulan
+                monthly_views_est = avg_views * monthly_uploads
+
+                # Estimasi AdSense (70% revenue share untuk creator)
+                adsense_min = (monthly_views_est / 1000) * rpm_min * 0.7
+                adsense_max = (monthly_views_est / 1000) * rpm_max * 0.7
+                adsense_avg = (monthly_views_est / 1000) * rpm_avg * 0.7
+
+                # Estimasi sponsorship per video (berbasis subscribers & engagement)
+                # Formula: base rate $500 per 100K subscribers, dikali engagement multiplier
+                base_sponsorship = (subscribers / 100000) * 500
+                engagement_multiplier = min(avg_engagement / 2, 3.0)  # max 3x
+                sponsorship_per_video = base_sponsorship * sponsorship_mult * max(engagement_multiplier, 0.5)
+                sponsorship_monthly = sponsorship_per_video * monthly_uploads
+
+                # Estimasi membership (5% subscriber join di $5/bulan)
+                membership_est = subscribers * 0.005 * 5
+
+                # Total estimasi
+                total_min = adsense_min
+                total_max = adsense_max + sponsorship_monthly + membership_est
+                total_avg = adsense_avg + (sponsorship_monthly * 0.3)  # 30% kemungkinan dapat sponsor
+
+                st.success(f"✅ Data channel **{data['name']}** berhasil diambil!")
+                st.divider()
+
+                # --- OVERVIEW ---
+                st.subheader(f"📊 Profile: {data['name']}")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Subscribers", f"{subscribers:,}")
+                c2.metric("Avg Views/Video", f"{int(avg_views):,}")
+                c3.metric("Avg Engagement", f"{avg_engagement:.2f}%")
+                c4.metric("Total Video", f"{data['total_videos']:,}")
+
+                # Tampilkan hasil deteksi otomatis
+                d1, d2 = st.columns(2)
+                d1.info(f"🎯 **Niche Terdeteksi:** {niche}")
+                d2.info(f"📅 **Frekuensi Upload:** ~{monthly_uploads}x per bulan (dihitung dari 10 video terakhir)")
+
+                # --- ESTIMASI ADSENSE ---
+                st.subheader("📺 Estimasi Penghasilan AdSense")
+                st.caption(f"Berdasarkan niche **{niche}** | RPM benchmark: ${rpm_min}–${rpm_max} per 1.000 views")
+
+                a1, a2, a3 = st.columns(3)
+                a1.metric("Estimasi Minimum/Bulan", f"${adsense_min:,.0f}", help="Berdasarkan RPM terendah niche ini")
+                a2.metric("Estimasi Rata-rata/Bulan", f"${adsense_avg:,.0f}", help="Berdasarkan RPM rata-rata niche ini")
+                a3.metric("Estimasi Maksimum/Bulan", f"${adsense_max:,.0f}", help="Berdasarkan RPM tertinggi niche ini")
+
+                st.caption(f"📌 Asumsi: {monthly_uploads} video/bulan (terdeteksi otomatis) × rata-rata {int(avg_views):,} views/video = **{int(monthly_views_est):,} views/bulan**")
+
+                st.divider()
+
+                # --- ESTIMASI SPONSORSHIP ---
+                st.subheader("🤝 Estimasi Sponsorship")
+                st.caption("Berdasarkan jumlah subscriber, engagement rate, dan rata-rata industri niche ini")
+
+                s1, s2 = st.columns(2)
+                s1.metric("Estimasi per Video", f"${sponsorship_per_video:,.0f}")
+                s2.metric("Estimasi per Bulan", f"${sponsorship_monthly:,.0f}", help="Asumsi semua video dapat sponsor — sangat optimistis")
+
+                st.info(f"💡 Dengan {subscribers:,} subscriber dan engagement {avg_engagement:.2f}%, rate sponsorship wajar untuk channel ini berkisar **${sponsorship_per_video*0.5:,.0f} – ${sponsorship_per_video*1.5:,.0f} per video**.")
+
+                st.divider()
+
+                # --- ESTIMASI MEMBERSHIP ---
+                st.subheader("👥 Estimasi YouTube Membership")
+                st.caption("Asumsi: 0.5% subscriber bergabung di tier $5/bulan")
+                st.metric("Estimasi Membership/Bulan", f"${membership_est:,.0f}")
+
+                st.divider()
+
+                # --- TOTAL POTENSI ---
+                st.subheader("💎 Total Potensi Penghasilan Bulanan")
+                t1, t2, t3 = st.columns(3)
+                t1.metric("Skenario Konservatif", f"${total_min:,.0f}", help="AdSense saja, RPM minimum")
+                t2.metric("Skenario Realistis", f"${total_avg:,.0f}", help="AdSense + 30% kemungkinan dapat sponsor")
+                t3.metric("Skenario Optimistis", f"${total_max:,.0f}", help="AdSense + semua video dapat sponsor + membership")
+
+                # Konversi ke Rupiah
+                usd_idr = 15800
+                st.markdown(f"**Dalam Rupiah (kurs ~Rp{usd_idr:,}/USD):**")
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Konservatif", f"Rp{total_min * usd_idr:,.0f}")
+                r2.metric("Realistis", f"Rp{total_avg * usd_idr:,.0f}")
+                r3.metric("Optimistis", f"Rp{total_max * usd_idr:,.0f}")
+
+                st.divider()
+
+                # --- REKOMENDASI ---
+                st.subheader("🚀 Rekomendasi untuk Meningkatkan Monetisasi")
+
+                if avg_engagement < 1:
+                    st.warning("⚠️ **Engagement masih rendah** — fokus dulu meningkatkan interaksi sebelum pitch ke sponsor. Sponsor melihat engagement lebih dari sekadar views.")
+                elif avg_engagement < 3:
+                    st.info("📈 **Engagement cukup** — sudah layak pitch ke sponsor micro/nano. Tingkatkan lagi untuk membuka pintu ke brand besar.")
+                else:
+                    st.success("🔥 **Engagement sangat baik** — posisi kuat untuk negosiasi sponsorship premium. Jangan undercharge!")
+
+                if subscribers < 1000:
+                    st.info("🌱 **Belum monetisasi AdSense** — butuh minimal 1.000 subscriber & 4.000 jam tayang. Fokus konsistensi konten dulu.")
+                elif subscribers < 10000:
+                    st.info("📣 **Fase micro-creator** — mulai bangun personal brand dan cari micro-sponsorship di niche kamu.")
+                elif subscribers < 100000:
+                    st.success("💪 **Mid-tier creator** — saatnya diversifikasi: digital product, affiliate marketing, dan membership.")
+                else:
+                    st.success("🏆 **Top-tier creator** — pertimbangkan membangun tim, agency deal, dan revenue stream pasif seperti online course.")
+
+        else:
+            st.warning("Masukkan link channel YouTube!")
