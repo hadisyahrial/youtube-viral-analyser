@@ -14,9 +14,9 @@ except Exception:
     API_KEY = "AIzaSyCoTQTLR8YCopYzHOV-f9a5mY4y9KXT7GA"  # fallback lokal
 
 try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    GROQ_API_KEY = st.secrets["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"]
 except Exception:
-    GROQ_API_KEY = ""
+    GROQ_API_KEY = "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"
 
 def call_groq(prompt, max_tokens=1500):
     """Panggil Groq API untuk generate teks"""
