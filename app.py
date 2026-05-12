@@ -571,7 +571,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -1825,3 +1825,284 @@ elif mode == "Hook & Narrative Analyser 🎣":
                     st.warning(f"⚠️ Hook kamu masih {comp_score - score} poin di bawah formula terbaik {ch_name}. Terapkan rekomendasi di atas untuk menutup gap.")
             else:
                 st.warning("Tulis atau pilih hook terlebih dahulu!")
+
+elif mode == "Content Repurposing Planner 🔄":
+    st.subheader("🔄 Content Repurposing Planner")
+    st.markdown("Maksimalkan satu video YouTube menjadi konten di banyak platform sekaligus.")
+
+    # --- PLATFORM OPTIONS ---
+    PLATFORMS = {
+        "📱 YouTube Shorts": {
+            "icon": "📱",
+            "format": "Video vertikal 60 detik",
+            "best_for": "Momen paling menarik / insight terkuat dari video",
+            "tips": [
+                "Ambil 1 insight terbaik dari video (menit ke berapa yang paling banyak ditonton)",
+                "Potong menjadi 45–60 detik, tambahkan teks overlay di layar",
+                "Judul Shorts harus berbeda dari video utama — lebih pendek dan langsung",
+                "Upload dalam 24–48 jam setelah video utama untuk memaksimalkan momentum",
+            ],
+            "template": "🎬 [{JUDUL_SINGKAT}] — {POIN_UTAMA} #Shorts"
+        },
+        "🎙️ Podcast / Audio": {
+            "icon": "🎙️",
+            "format": "Audio 5–15 menit",
+            "best_for": "Konten berbasis opini, wawancara, atau edukasi mendalam",
+            "tips": [
+                "Rekam ulang audio dengan intro/outro podcast yang konsisten",
+                "Hapus bagian visual-dependent (demo layar, grafik) — ganti dengan penjelasan verbal",
+                "Upload ke Spotify for Podcasters (gratis) untuk distribusi otomatis",
+                "Tambahkan timestamps di deskripsi podcast untuk navigasi mudah",
+            ],
+            "template": "🎙️ Ep. {NOMOR}: {JUDUL_VIDEO} | {NAMA_PODCAST}"
+        },
+        "🐦 Thread X (Twitter)": {
+            "icon": "🐦",
+            "format": "Thread 5–10 tweet",
+            "best_for": "Konten berbasis poin-poin atau fakta menarik",
+            "tips": [
+                "Tweet pertama = hook terkuat (kutip statistik atau pernyataan mengejutkan)",
+                "Setiap tweet = satu poin utama dari video (maksimal 280 karakter)",
+                "Tweet terakhir = CTA + link video YouTube",
+                "Posting thread di jam peak: Selasa–Kamis pukul 08.00–10.00 atau 19.00–21.00",
+            ],
+            "template": "🧵 THREAD: {POIN_UTAMA}\n\n(1/{TOTAL}) {HOOK_PEMBUKA}\n\n👇"
+        },
+        "📸 Carousel Instagram": {
+            "icon": "📸",
+            "format": "Slide 5–10 halaman",
+            "best_for": "Konten tips, how-to, atau rangkuman visual",
+            "tips": [
+                "Slide 1 = judul/hook yang memaksa orang swipe (gunakan angka atau pertanyaan)",
+                "Slide 2–9 = satu poin per slide, teks minimal, visual dominan",
+                "Slide terakhir = CTA + arahkan ke link bio (video YouTube)",
+                "Gunakan Canva template yang konsisten dengan branding channel",
+            ],
+            "template": "📊 {JUDUL}: {POIN_UTAMA} [Slide 1/{TOTAL_SLIDE}]"
+        },
+        "✍️ Artikel Blog": {
+            "icon": "✍️",
+            "format": "Artikel 800–1500 kata",
+            "best_for": "Konten edukasi atau how-to yang butuh penjelasan mendalam",
+            "tips": [
+                "Gunakan judul yang mengandung keyword SEO untuk traffic Google organik",
+                "Struktur: Intro → Problem → Solusi (H2) → Kesimpulan → CTA embed video",
+                "Embed video YouTube di dalam artikel untuk meningkatkan watch time",
+                "Publish di Medium, LinkedIn Article, atau blog pribadi",
+            ],
+            "template": "{JUDUL_SEO}: Panduan Lengkap {TAHUN} untuk {TARGET_AUDIENS}"
+        },
+        "📧 Newsletter": {
+            "icon": "📧",
+            "format": "Email 300–500 kata",
+            "best_for": "Membangun hubungan langsung dengan subscriber loyal",
+            "tips": [
+                "Subject line = versi terpendek dari hook video (maksimal 50 karakter)",
+                "Paragraf pembuka = ringkasan 2 kalimat mengapa konten ini penting buat pembaca",
+                "Sisipkan 1–2 kutipan terbaik dari video sebagai preview",
+                "CTA tunggal: satu tombol/link ke video — jangan terlalu banyak pilihan",
+            ],
+            "template": "📬 [{NAMA_NEWSLETTER}] {SUBJEK_SINGKAT} — edisi minggu ini"
+        },
+        "🎵 TikTok": {
+            "icon": "🎵",
+            "format": "Video vertikal 15–60 detik",
+            "best_for": "Konten entertainment, hook kuat, dan tren audio",
+            "tips": [
+                "3 detik pertama KRUSIAL — langsung ke poin tanpa intro",
+                "Gunakan trending audio untuk boost distribusi organik",
+                "Tambahkan teks on-screen karena 85% penonton TikTok nonton tanpa suara",
+                "Posting 1–3x sehari untuk hasil optimal di awal pertumbuhan akun",
+            ],
+            "template": "{HOOK_3_DETIK} #fyp #{NICHE_TAG} #{KEYWORD_TAG}"
+        },
+        "💼 LinkedIn Post": {
+            "icon": "💼",
+            "format": "Post teks 150–300 kata",
+            "best_for": "Konten bisnis, karir, atau professional insight",
+            "tips": [
+                "Baris pertama = hook yang memaksa orang klik 'see more' (jangan lebih dari 2 baris)",
+                "Format: Insight + Pengalaman Personal + Pelajaran yang Bisa Diterapkan",
+                "Tag 2–3 orang relevan untuk meningkatkan jangkauan",
+                "Posting Selasa–Kamis pagi (07.00–09.00) untuk engagement tertinggi di LinkedIn",
+            ],
+            "template": "💡 {INSIGHT_UTAMA}\n\nDulu saya pikir {ASUMSI_SALAH}...\n\nTapi setelah {PENGALAMAN}, saya sadar: {PELAJARAN}"
+        },
+    }
+
+    # --- INPUT ---
+    video_input_rp = st.text_input(
+        "Paste Link Video YouTube",
+        placeholder="https://www.youtube.com/watch?v=...",
+        key="rp_video_input"
+    )
+
+    st.markdown("#### 🎯 Pilih Platform Repurposing")
+    st.caption("Pilih platform mana saja yang ingin kamu gunakan untuk mendistribusikan konten ini.")
+
+    selected_platforms = []
+    cols = st.columns(4)
+    platform_list = list(PLATFORMS.keys())
+    for i, platform in enumerate(platform_list):
+        with cols[i % 4]:
+            if st.checkbox(platform, key=f"plat_{i}", value=(i < 3)):
+                selected_platforms.append(platform)
+
+    if st.button("🔄 Buat Repurposing Plan", use_container_width=True):
+        if not video_input_rp:
+            st.warning("Masukkan link video YouTube!")
+        elif not selected_platforms:
+            st.warning("Pilih minimal 1 platform!")
+        else:
+            with st.spinner("Menganalisis video & membuat repurposing plan..."):
+                result = analyze_virality(video_input_rp)
+
+            if result:
+                title = result['title']
+                views = result['views']
+                likes = result['likes']
+                comments = result['comments']
+                engagement = result['engagement']
+                tags = result['tags']
+                grade = result['grade']
+
+                # Ekstrak topik utama
+                topic, tag_keyword = extract_topic(title, tags)
+
+                st.success("✅ Video berhasil dianalisis!")
+                st.divider()
+
+                # --- OVERVIEW VIDEO ---
+                st.subheader(f"🎬 Video: {title}")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Views", f"{views:,}")
+                c2.metric("Likes", f"{likes:,}")
+                c3.metric("Comments", f"{comments:,}")
+                c4.metric("Engagement", f"{engagement:.2f}%")
+                st.markdown(f"**Topik utama terdeteksi:** `{topic}`")
+
+                st.divider()
+
+                # --- REPURPOSING PRIORITY ---
+                st.subheader("🗓️ Rencana Repurposing")
+                st.markdown(f"**{len(selected_platforms)} platform dipilih** — estimasi total konten yang dihasilkan dari 1 video ini:")
+
+                # Hitung ROI konten
+                total_content = len(selected_platforms)
+                st.info(f"🚀 Dari **1 video** ini kamu bisa membuat **{total_content} konten** di platform berbeda — melipatgandakan jangkauan tanpa effort membuat konten dari nol.")
+
+                st.divider()
+
+                # --- PLAN PER PLATFORM ---
+                st.subheader("📋 Detail Plan per Platform")
+
+                for i, platform in enumerate(selected_platforms, 1):
+                    p = PLATFORMS[platform]
+                    with st.expander(f"{platform} — {p['format']}", expanded=(i <= 2)):
+
+                        col_info, col_template = st.columns([3, 2])
+
+                        with col_info:
+                            st.markdown(f"**🎯 Paling cocok untuk:** {p['best_for']}")
+                            st.markdown("**📌 Tips spesifik untuk video ini:**")
+                            for tip in p['tips']:
+                                st.markdown(f"- {tip}")
+
+                        with col_template:
+                            st.markdown("**✏️ Template Konten:**")
+
+                            # Customize template dengan data video nyata
+                            template = p['template']
+                            judul_singkat = ' '.join(title.split()[:5])
+                            template_filled = (template
+                                .replace("{JUDUL_SINGKAT}", judul_singkat)
+                                .replace("{JUDUL_VIDEO}", title[:50])
+                                .replace("{POIN_UTAMA}", topic)
+                                .replace("{HOOK_PEMBUKA}", f"Tahukah kamu tentang {topic.lower()}?")
+                                .replace("{TOTAL}", "8")
+                                .replace("{TOTAL_SLIDE}", "8")
+                                .replace("{NOMOR}", str(i))
+                                .replace("{TAHUN}", "2025")
+                                .replace("{TARGET_AUDIENS}", "Content Creator")
+                                .replace("{NAMA_NEWSLETTER}", "Creator Weekly")
+                                .replace("{SUBJEK_SINGKAT}", topic[:40])
+                                .replace("{NAMA_PODCAST}", f"{topic} Podcast")
+                                .replace("{JUDUL_SEO}", title[:50])
+                                .replace("{HOOK_3_DETIK}", f"Stop! Kamu harus tahu tentang {topic.lower()}")
+                                .replace("{NICHE_TAG}", tag_keyword.lower().replace(' ', ''))
+                                .replace("{KEYWORD_TAG}", topic.lower().replace(' ', ''))
+                                .replace("{INSIGHT_UTAMA}", f"Fakta tentang {topic} yang mengubah cara saya berkonten")
+                                .replace("{ASUMSI_SALAH}", f"{topic.lower()} itu mudah")
+                                .replace("{PENGALAMAN}", "mencoba sendiri selama 3 bulan")
+                                .replace("{PELAJARAN}", f"konsistensi di {topic.lower()} jauh lebih penting dari viral")
+                            )
+                            st.code(template_filled, language=None)
+
+                st.divider()
+
+                # --- JADWAL DISTRIBUSI ---
+                st.subheader("📅 Jadwal Distribusi yang Disarankan")
+                st.markdown("Urutan distribusi optimal untuk memaksimalkan momentum setiap platform:")
+
+                schedule = []
+                priority_order = [
+                    "📱 YouTube Shorts",
+                    "🎵 TikTok",
+                    "📸 Carousel Instagram",
+                    "🐦 Thread X (Twitter)",
+                    "💼 LinkedIn Post",
+                    "✍️ Artikel Blog",
+                    "📧 Newsletter",
+                    "🎙️ Podcast / Audio",
+                ]
+
+                day = 0
+                timing = {
+                    0: "Hari H (sama dengan upload video utama)",
+                    1: "Hari H+1",
+                    2: "Hari H+2",
+                    3: "Hari H+3",
+                    5: "Hari H+5",
+                    7: "Hari H+7 (1 minggu setelah upload)",
+                    10: "Hari H+10",
+                    14: "Hari H+14 (2 minggu setelah upload)",
+                }
+                day_map = [0, 1, 2, 3, 5, 7, 10, 14]
+
+                ordered_selected = [p for p in priority_order if p in selected_platforms]
+                remaining = [p for p in selected_platforms if p not in priority_order]
+                ordered_selected += remaining
+
+                for i, platform in enumerate(ordered_selected):
+                    day_val = day_map[i] if i < len(day_map) else day_map[-1] + (i - len(day_map) + 1) * 2
+                    timing_str = timing.get(day_val, f"Hari H+{day_val}")
+                    st.markdown(f"**{i+1}.** {platform} → ⏰ {timing_str}")
+
+                st.divider()
+
+                # --- ESTIMASI JANGKAUAN TAMBAHAN ---
+                st.subheader("📊 Estimasi Jangkauan Tambahan")
+                st.caption("Estimasi kasar berdasarkan rata-rata industri — bukan jaminan hasil.")
+
+                reach_multipliers = {
+                    "📱 YouTube Shorts": 0.3,
+                    "🎵 TikTok": 0.5,
+                    "📸 Carousel Instagram": 0.2,
+                    "🐦 Thread X (Twitter)": 0.15,
+                    "💼 LinkedIn Post": 0.1,
+                    "✍️ Artikel Blog": 0.2,
+                    "📧 Newsletter": 0.05,
+                    "🎙️ Podcast / Audio": 0.1,
+                }
+
+                total_additional = 0
+                for platform in selected_platforms:
+                    mult = reach_multipliers.get(platform, 0.1)
+                    additional = int(views * mult)
+                    total_additional += additional
+                    st.markdown(f"- {platform}: +**{additional:,}** estimasi tambahan reach")
+
+                st.success(f"🚀 Total estimasi tambahan reach dari repurposing: **+{total_additional:,}** — tanpa membuat konten baru dari nol!")
+
+            else:
+                st.error("Video tidak ditemukan. Pastikan link benar!")
