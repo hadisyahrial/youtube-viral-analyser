@@ -13,6 +13,37 @@ try:
 except Exception:
     API_KEY = "AIzaSyCoTQTLR8YCopYzHOV-f9a5mY4y9KXT7GA"  # fallback lokal
 
+try:
+    GROQ_API_KEY = st.secrets["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"]
+except Exception:
+    GROQ_API_KEY = "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"
+
+def call_groq(prompt, max_tokens=1500):
+    """Panggil Groq API untuk generate teks"""
+    if not GROQ_API_KEY:
+        return None, "GROQ_API_KEY tidak ditemukan di Secrets."
+    try:
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+        }
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers, json=payload, timeout=30
+        )
+        if resp.status_code == 200:
+            return resp.json()['choices'][0]['message']['content'], None
+        else:
+            return None, f"Groq error: {resp.status_code} — {resp.text[:200]}"
+    except Exception as e:
+        return None, str(e)
+
 def extract_video_id(url_or_id):
     import re
     try:
@@ -569,7 +600,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -2104,3 +2135,224 @@ elif mode == "Content Repurposing Planner 🔄":
 
             else:
                 st.error("Video tidak ditemukan. Pastikan link benar!")
+
+elif mode == "Script Video Generator 📝":
+    st.subheader("📝 Script Video Generator")
+    st.markdown("Generate script video lengkap berbasis data YouTube nyata — ditenagai **Groq AI (Llama 3)**.")
+
+    if not GROQ_API_KEY:
+        st.error("❌ GROQ_API_KEY belum diisi di Streamlit Secrets. Tambahkan dulu untuk menggunakan fitur ini.")
+        st.stop()
+
+    # --- INPUT ---
+    st.markdown("### 📌 Step 1 — Sumber Inspirasi Script")
+    source_mode = st.radio(
+        "Buat script berdasarkan:",
+        ["🔗 Analisis video kompetitor (direkomendasikan)", "✏️ Input topik manual"],
+        horizontal=True
+    )
+
+    competitor_data = None
+    topic_input = ""
+    niche_input = ""
+    target_audience = ""
+
+    if "🔗" in source_mode:
+        comp_url = st.text_input("Paste Link Video Kompetitor", placeholder="https://www.youtube.com/watch?v=...")
+        if comp_url and st.button("🔍 Analisis Video Kompetitor", use_container_width=False):
+            with st.spinner("Menganalisis video kompetitor..."):
+                competitor_data = analyze_virality(comp_url)
+                if competitor_data:
+                    st.session_state['script_competitor'] = competitor_data
+                    st.success(f"✅ Video kompetitor dianalisis: **{competitor_data['title']}**")
+                else:
+                    st.error("Video tidak ditemukan.")
+
+        if 'script_competitor' in st.session_state:
+            competitor_data = st.session_state['script_competitor']
+            cd = competitor_data
+            st.info(f"📊 **{cd['title']}** | 👁️ {cd['views']:,} views | 🔥 {cd['engagement']:.2f}% engagement | Grade: {cd['grade']}")
+    else:
+        topic_input = st.text_input("Topik Video", placeholder="Contoh: Cara meningkatkan engagement YouTube")
+
+    st.divider()
+    st.markdown("### ✏️ Step 2 — Detail Script")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        video_title = st.text_input(
+            "Judul Video yang Akan Dibuat",
+            value=competitor_data['title'][:80] if competitor_data else topic_input,
+            placeholder="Judul video kamu..."
+        )
+        duration = st.selectbox("Durasi Target Video", ["3–5 menit", "5–8 menit", "8–12 menit", "12–20 menit"])
+        language = st.selectbox("Bahasa Script", ["Bahasa Indonesia", "English"])
+
+    with col2:
+        niche_input = st.text_input("Niche / Kategori Konten", placeholder="Contoh: YouTube Tips, Finance, Gaming")
+        target_audience = st.text_input("Target Audiens", placeholder="Contoh: Content creator pemula usia 18–30 tahun")
+        tone = st.selectbox("Tone / Gaya Bahasa", ["Santai & Conversational", "Profesional & Edukatif", "Energetik & Motivatif", "Storytelling Personal"])
+
+    st.divider()
+    st.markdown("### 🎯 Step 3 — Pilih Bagian Script")
+    st.caption("Pilih bagian mana yang ingin di-generate — bisa satu per satu atau semua sekaligus.")
+
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    with col_s1: gen_hook = st.checkbox("🎣 Hook Pembuka", value=True)
+    with col_s2: gen_body = st.checkbox("📖 Isi Utama", value=True)
+    with col_s3: gen_cta = st.checkbox("📣 CTA Penutup", value=True)
+    with col_s4: gen_desc = st.checkbox("📄 Deskripsi YouTube", value=True)
+
+    if st.button("🚀 Generate Script dengan Groq AI", use_container_width=True, type="primary"):
+        if not video_title:
+            st.warning("Isi judul video terlebih dahulu!")
+        elif not any([gen_hook, gen_body, gen_cta, gen_desc]):
+            st.warning("Pilih minimal 1 bagian script!")
+        else:
+            # Bangun konteks dari data kompetitor jika ada
+            competitor_context = ""
+            if competitor_data:
+                competitor_context = f"""
+Data video kompetitor untuk referensi:
+- Judul: {competitor_data['title']}
+- Views: {competitor_data['views']:,}
+- Engagement: {competitor_data['engagement']:.2f}%
+- Grade: {competitor_data['grade']}
+- Tags: {', '.join(competitor_data['tags'][:10]) if competitor_data['tags'] else 'tidak ada'}
+Gunakan pola dan gaya yang terinspirasi dari video ini, namun buat konten yang orisinal.
+"""
+
+            st.divider()
+            st.subheader("🎬 Script yang Digenerate")
+
+            # --- GENERATE HOOK ---
+            if gen_hook:
+                with st.spinner("✍️ Generating hook pembuka..."):
+                    hook_prompt = f"""Kamu adalah scriptwriter YouTube profesional berpengalaman.
+Buat hook pembuka video YouTube yang sangat kuat dalam {language}.
+
+Judul video: {video_title}
+Niche: {niche_input or 'General'}
+Target audiens: {target_audience or 'Content creator'}
+Tone: {tone}
+Durasi hook: 30–45 detik pertama (sekitar 75–100 kata)
+{competitor_context}
+
+Kriteria hook yang harus dipenuhi:
+1. Langsung menyentuh pain point atau rasa ingin tahu audiens
+2. Mengandung curiosity gap atau pernyataan mengejutkan
+3. Ada angka spesifik jika relevan
+4. Berikan alasan mengapa penonton harus terus menonton
+5. Tidak ada basa-basi atau intro panjang
+
+Tulis HANYA teks hook-nya saja, tanpa label atau penjelasan tambahan."""
+
+                    hook_result, err = call_groq(hook_prompt, max_tokens=300)
+
+                with st.expander("🎣 Hook Pembuka (30–45 detik pertama)", expanded=True):
+                    if hook_result:
+                        st.markdown(hook_result)
+                        st.code(hook_result, language=None)
+                    else:
+                        st.error(f"Gagal generate hook: {err}")
+
+            # --- GENERATE BODY ---
+            if gen_body:
+                with st.spinner("📖 Generating isi utama video..."):
+                    dur_map = {"3–5 menit": "3", "5–8 menit": "5", "8–12 menit": "8", "12–20 menit": "12"}
+                    min_dur = dur_map.get(duration, "5")
+
+                    body_prompt = f"""Kamu adalah scriptwriter YouTube profesional berpengalaman.
+Buat script isi utama video YouTube dalam {language}.
+
+Judul video: {video_title}
+Niche: {niche_input or 'General'}
+Target audiens: {target_audience or 'Content creator'}
+Tone: {tone}
+Durasi video: {duration} (buat script untuk bagian isi utama sekitar {int(min_dur)*2}–{int(min_dur)*3} menit)
+{competitor_context}
+
+Format script:
+- Bagi menjadi 3–5 segmen utama dengan judul segmen
+- Setiap segmen berisi penjelasan, contoh nyata, dan transisi ke segmen berikutnya
+- Gunakan format [VISUAL: ...] untuk menandai instruksi visual/B-roll
+- Sertakan [PAUSE] di momen yang butuh penekanan
+- Tulis dengan natural seperti orang berbicara, bukan membaca teks
+
+Tulis HANYA script-nya, tanpa penjelasan tambahan."""
+
+                    body_result, err = call_groq(body_prompt, max_tokens=1500)
+
+                with st.expander("📖 Isi Utama Video", expanded=True):
+                    if body_result:
+                        st.markdown(body_result)
+                        st.code(body_result, language=None)
+                    else:
+                        st.error(f"Gagal generate isi: {err}")
+
+            # --- GENERATE CTA ---
+            if gen_cta:
+                with st.spinner("📣 Generating CTA penutup..."):
+                    cta_prompt = f"""Kamu adalah scriptwriter YouTube profesional berpengalaman.
+Buat script CTA (Call-to-Action) penutup video YouTube dalam {language}.
+
+Judul video: {video_title}
+Niche: {niche_input or 'General'}
+Tone: {tone}
+Durasi CTA: 30–60 detik terakhir
+
+Kriteria CTA yang harus dipenuhi:
+1. Ringkas poin utama dalam 1–2 kalimat
+2. Minta like dengan alasan yang jelas (bukan sekadar "jangan lupa like")
+3. Minta subscribe dengan value proposition spesifik
+4. Ajak komentar dengan pertanyaan spesifik yang mudah dijawab
+5. Tease konten berikutnya jika relevan
+6. Natural dan tidak terkesan memaksa
+
+Tulis HANYA teks CTA-nya saja, tanpa label atau penjelasan tambahan."""
+
+                    cta_result, err = call_groq(cta_prompt, max_tokens=300)
+
+                with st.expander("📣 CTA Penutup (30–60 detik terakhir)", expanded=True):
+                    if cta_result:
+                        st.markdown(cta_result)
+                        st.code(cta_result, language=None)
+                    else:
+                        st.error(f"Gagal generate CTA: {err}")
+
+            # --- GENERATE DESKRIPSI ---
+            if gen_desc:
+                with st.spinner("📄 Generating deskripsi YouTube..."):
+                    tags_context = ""
+                    if competitor_data and competitor_data['tags']:
+                        tags_context = f"Tags kompetitor untuk referensi keyword: {', '.join(competitor_data['tags'][:15])}"
+
+                    desc_prompt = f"""Kamu adalah SEO specialist YouTube profesional.
+Buat deskripsi video YouTube yang optimal untuk SEO dalam {language}.
+
+Judul video: {video_title}
+Niche: {niche_input or 'General'}
+Target audiens: {target_audience or 'Content creator'}
+{tags_context}
+
+Format deskripsi:
+1. Paragraf pertama (2–3 kalimat): ringkasan video + keyword utama
+2. Timestamps: buat 5–7 timestamp fiktif yang relevan dengan topik
+3. Tentang channel: 2 kalimat deskripsi channel
+4. Social media placeholder: Twitter, Instagram, TikTok
+5. Hashtags: 10–15 hashtag relevan di akhir
+
+Tulis deskripsi lengkapnya langsung tanpa penjelasan tambahan."""
+
+                    desc_result, err = call_groq(desc_prompt, max_tokens=600)
+
+                with st.expander("📄 Deskripsi YouTube (SEO Optimized)", expanded=True):
+                    if desc_result:
+                        st.markdown(desc_result)
+                        st.code(desc_result, language=None)
+                    else:
+                        st.error(f"Gagal generate deskripsi: {err}")
+
+            st.divider()
+            st.success("✅ Script selesai digenerate! Copy bagian yang kamu butuhkan dan sesuaikan dengan gaya kontenmu.")
+            st.caption("⚠️ Script ini adalah draft awal — selalu review dan sesuaikan dengan suara asli kamu sebelum rekam.")
