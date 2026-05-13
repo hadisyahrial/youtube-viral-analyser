@@ -600,7 +600,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -2356,3 +2356,315 @@ Tulis deskripsi lengkapnya langsung tanpa penjelasan tambahan."""
             st.divider()
             st.success("✅ Script selesai digenerate! Copy bagian yang kamu butuhkan dan sesuaikan dengan gaya kontenmu.")
             st.caption("⚠️ Script ini adalah draft awal — selalu review dan sesuaikan dengan suara asli kamu sebelum rekam.")
+
+elif mode == "Audience Intelligence 🧠":
+    st.subheader("🧠 Audience Intelligence")
+    st.markdown("Temukan **topik viral**, **pain point audiens**, dan **sentimen komentar** — semua dari data nyata, dianalisis Groq AI.")
+
+    if not GROQ_API_KEY:
+        st.error("❌ GROQ_API_KEY belum diisi di Streamlit Secrets.")
+        st.stop()
+
+    # --- INPUT MODE ---
+    st.markdown("### 📌 Pilih Sumber Data")
+    source = st.radio("Analisis berdasarkan:", ["🔗 Link Channel Kompetitor", "✏️ Niche / Topik Manual", "🔗 + ✏️ Keduanya"], horizontal=True)
+
+    channel_url_ai = ""
+    niche_manual = ""
+
+    if "🔗" in source:
+        channel_url_ai = st.text_input("Link Channel Kompetitor", placeholder="https://www.youtube.com/@channelname", key="ai_channel")
+    if "✏️" in source:
+        niche_manual = st.text_input("Niche / Topik", placeholder="Contoh: Personal Finance, Gaming, Travel Indonesia", key="ai_niche")
+
+    st.divider()
+
+    # --- PILIH FITUR ---
+    st.markdown("### 🎯 Pilih Analisis yang Diinginkan")
+    col1, col2, col3 = st.columns(3)
+    with col1: do_viral = st.checkbox("🎯 Viral Topic Finder", value=True)
+    with col2: do_pain = st.checkbox("🧠 Audience Pain Point", value=True)
+    with col3: do_sentiment = st.checkbox("💬 Comment Sentiment", value=True)
+
+    if st.button("🚀 Jalankan Audience Intelligence", use_container_width=True, type="primary"):
+        has_channel = bool(channel_url_ai.strip())
+        has_niche = bool(niche_manual.strip())
+
+        if not has_channel and not has_niche:
+            st.warning("Masukkan link channel atau niche terlebih dahulu!")
+            st.stop()
+
+        # ============================================================
+        # AMBIL DATA CHANNEL JIKA ADA
+        # ============================================================
+        channel_context = ""
+        video_titles = []
+        all_tags = []
+        channel_name = ""
+        comments_data = []
+        top_videos_ai = []
+
+        if has_channel:
+            with st.spinner("Mengambil data channel..."):
+                try:
+                    youtube = build('youtube', 'v3', developerKey=API_KEY)
+
+                    # Resolve channel ID
+                    handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_ai)
+                    channel_id = None
+                    if handle_match:
+                        sr = youtube.search().list(part="snippet", q=handle_match.group(1), type="channel", maxResults=1).execute()
+                        if sr['items']: channel_id = sr['items'][0]['snippet']['channelId']
+                    ch_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', channel_url_ai)
+                    if ch_match: channel_id = ch_match.group(1)
+
+                    if channel_id:
+                        ch_resp = youtube.channels().list(part="snippet,contentDetails,statistics", id=channel_id).execute()
+                        if ch_resp['items']:
+                            ch = ch_resp['items'][0]
+                            channel_name = ch['snippet']['title']
+                            subscribers = int(ch['statistics'].get('subscriberCount', 0))
+                            playlist_id = ch['contentDetails']['relatedPlaylists']['uploads']
+
+                            # Ambil 15 video terakhir
+                            pl_resp = youtube.playlistItems().list(part="contentDetails", playlistId=playlist_id, maxResults=15).execute()
+                            video_ids = [i['contentDetails']['videoId'] for i in pl_resp['items']]
+
+                            vids_resp = youtube.videos().list(part="snippet,statistics", id=','.join(video_ids)).execute()
+
+                            for v in vids_resp['items']:
+                                stats = v.get('statistics', {})
+                                sn = v['snippet']
+                                views = int(stats.get('viewCount', 0))
+                                likes = int(stats.get('likeCount', 0))
+                                comments_count = int(stats.get('commentCount', 0))
+                                eng = ((likes + comments_count) / views * 100) if views > 0 else 0
+                                video_titles.append(sn['title'])
+                                all_tags.extend(sn.get('tags', [])[:5])
+                                top_videos_ai.append({
+                                    "id": v['id'], "title": sn['title'],
+                                    "views": views, "engagement": eng,
+                                    "comments_count": comments_count
+                                })
+
+                            # Ambil komentar dari 3 video terbaik
+                            top3 = sorted(top_videos_ai, key=lambda x: x['engagement'], reverse=True)[:3]
+                            for vid in top3:
+                                try:
+                                    cm_resp = youtube.commentThreads().list(
+                                        part="snippet", videoId=vid['id'],
+                                        maxResults=30, order="relevance"
+                                    ).execute()
+                                    for item in cm_resp['items']:
+                                        text = item['snippet']['topLevelComment']['snippet']['textDisplay']
+                                        likes_cm = item['snippet']['topLevelComment']['snippet']['likeCount']
+                                        comments_data.append({"text": text[:200], "likes": likes_cm, "video": vid['title'][:50]})
+                                except:
+                                    pass
+
+                            channel_context = f"""
+Channel: {channel_name} ({subscribers:,} subscribers)
+Video terbaru (judul): {', '.join(video_titles[:10])}
+Tags yang sering dipakai: {', '.join(list(set(all_tags))[:20])}
+"""
+                        else:
+                            st.error("Channel tidak ditemukan.")
+                except Exception as e:
+                    st.error(f"Error mengambil data: {e}")
+
+        niche_context = f"Niche/Topik: {niche_manual}" if has_niche else ""
+        combined_context = f"{channel_context}\n{niche_context}".strip()
+
+        st.success("✅ Data berhasil dikumpulkan! Groq AI sedang menganalisis...")
+        st.divider()
+
+        # ============================================================
+        # 1. VIRAL TOPIC FINDER
+        # ============================================================
+        if do_viral:
+            st.subheader("🎯 Viral Topic Finder")
+            st.caption("Topik yang berpotensi viral berdasarkan tren niche dan pola konten kompetitor.")
+
+            with st.spinner("Groq AI mencari topik viral..."):
+                viral_prompt = f"""Kamu adalah analis konten YouTube berpengalaman.
+Berdasarkan data berikut, identifikasi 8 topik konten yang berpotensi viral.
+
+{combined_context}
+
+Untuk setiap topik berikan:
+1. Judul konten yang menarik (siap pakai)
+2. Alasan mengapa topik ini berpotensi viral (1 kalimat)
+3. Tingkat persaingan: Rendah / Sedang / Tinggi
+4. Estimasi potensi views: Kecil (<10K) / Sedang (10K-100K) / Besar (>100K)
+5. Format konten terbaik: Video panjang / Shorts / Keduanya
+
+Format output dalam Bahasa Indonesia. Buat dalam format terstruktur yang mudah dibaca.
+Fokus pada topik yang BELUM banyak dibuat kompetitor tapi SEDANG dicari audiens."""
+
+                viral_result, err = call_groq(viral_prompt, max_tokens=1200)
+
+            if viral_result:
+                st.markdown(viral_result)
+
+                # Generate tambahan: topic ideas dari titles
+                if video_titles:
+                    st.markdown("#### 📊 Pola Topik dari Channel Kompetitor")
+                    from collections import Counter
+                    stopwords_ai = {'the','and','for','with','this','that','how','why','what',
+                                    'yang','dan','ini','itu','untuk','dengan','dari','tidak','bisa'}
+                    all_title_words = []
+                    for t in video_titles:
+                        all_title_words.extend([w.lower().strip('?!.,#') for w in t.split()
+                                                if len(w) > 3 and w.lower() not in stopwords_ai])
+                    top_topics = Counter(all_title_words).most_common(12)
+                    if top_topics:
+                        cols = st.columns(4)
+                        for i, (word, count) in enumerate(top_topics):
+                            with cols[i % 4]:
+                                st.metric(f"`{word}`", f"{count}x muncul")
+            else:
+                st.error(f"Gagal: {err}")
+
+            st.divider()
+
+        # ============================================================
+        # 2. AUDIENCE PAIN POINT ANALYSER
+        # ============================================================
+        if do_pain:
+            st.subheader("🧠 Audience Pain Point Analyser")
+            st.caption("Pertanyaan, keluhan, dan keinginan audiens yang belum dijawab — tambang emas ide konten.")
+
+            with st.spinner("Groq AI menganalisis pain point audiens..."):
+                # Siapkan sample komentar jika ada
+                comments_sample = ""
+                if comments_data:
+                    top_comments = sorted(comments_data, key=lambda x: x['likes'], reverse=True)[:20]
+                    comments_sample = "Sample komentar nyata dari video kompetitor:\n"
+                    for c in top_comments:
+                        comments_sample += f'- "{c["text"]}" (👍 {c["likes"]})\n'
+
+                pain_prompt = f"""Kamu adalah analis audiens YouTube berpengalaman.
+Analisis pain point, pertanyaan, dan keinginan audiens berdasarkan data berikut.
+
+{combined_context}
+
+{comments_sample}
+
+Identifikasi dan kategorikan:
+
+## 🔴 Pain Points Utama (masalah yang paling sering dihadapi audiens)
+List 5 pain point dengan penjelasan singkat + peluang konten untuk menjawabnya.
+
+## ❓ Pertanyaan yang Sering Ditanyakan (tapi belum terjawab dengan baik)
+List 5 pertanyaan yang sering muncul di niche ini + judul konten yang bisa menjawabnya.
+
+## 💡 Keinginan Tersembunyi Audiens (yang tidak diucapkan tapi tersirat)
+List 3 keinginan tersembunyi + cara mengeksploitasinya dalam konten.
+
+## 🎯 Rekomendasi Konten Prioritas
+3 ide konten yang PALING MENDESAK dibuat berdasarkan pain point di atas.
+
+Tulis dalam Bahasa Indonesia, spesifik dan actionable."""
+
+                pain_result, err = call_groq(pain_prompt, max_tokens=1500)
+
+            if pain_result:
+                st.markdown(pain_result)
+            else:
+                st.error(f"Gagal: {err}")
+
+            st.divider()
+
+        # ============================================================
+        # 3. COMMENT SENTIMENT ANALYSER
+        # ============================================================
+        if do_sentiment:
+            st.subheader("💬 Comment Sentiment Analyser")
+            st.caption("Analisis sentimen komentar — apakah audiens puas, frustrasi, atau meminta konten lanjutan.")
+
+            if not comments_data:
+                if has_channel:
+                    st.info("Tidak ada komentar yang berhasil diambil dari channel ini (mungkin komentar dinonaktifkan).")
+                else:
+                    st.info("Sentiment analysis membutuhkan link channel kompetitor untuk mengambil komentar nyata.")
+            else:
+                with st.spinner("Groq AI menganalisis sentimen komentar..."):
+                    all_comments_text = "\n".join([f'- "{c["text"]}" (👍{c["likes"]})' for c in comments_data[:40]])
+
+                    sentiment_prompt = f"""Kamu adalah analis sentimen konten YouTube profesional.
+Analisis sentimen komentar berikut dari channel {channel_name}:
+
+{all_comments_text}
+
+Berikan analisis lengkap:
+
+## 📊 Distribusi Sentimen
+Persentase: Positif / Netral / Negatif / Pertanyaan / Request konten
+
+## 😊 Sentimen Positif — Apa yang Disukai Audiens
+Top 3 hal yang paling disukai audiens dari konten ini.
+
+## 😤 Sentimen Negatif — Keluhan & Kritik
+Top 3 keluhan atau kritik yang perlu diperhatikan creator.
+
+## 🙋 Request & Pertanyaan Audiens
+5 request atau pertanyaan spesifik yang paling sering muncul — ini adalah ide konten berikutnya!
+
+## 💡 Insight untuk Creator
+3 rekomendasi konkret berdasarkan analisis sentimen ini.
+
+## 🚨 Red Flag
+Apakah ada pola komentar negatif yang perlu segera ditangani? Jelaskan.
+
+Tulis dalam Bahasa Indonesia, jelas dan actionable."""
+
+                    sentiment_result, err = call_groq(sentiment_prompt, max_tokens=1200)
+
+                if sentiment_result:
+                    # Tampilkan ringkasan komentar terlebih dahulu
+                    st.markdown(f"**Total komentar dianalisis:** {len(comments_data)} komentar dari {min(3, len(top_videos_ai))} video terbaik")
+
+                    with st.expander("📝 Lihat Sample Komentar yang Dianalisis", expanded=False):
+                        for c in comments_data[:10]:
+                            st.markdown(f"👍 **{c['likes']}** | *\"{c['text']}\"*")
+                            st.caption(f"Dari video: {c['video']}")
+
+                    st.divider()
+                    st.markdown(sentiment_result)
+                else:
+                    st.error(f"Gagal: {err}")
+
+        # ============================================================
+        # RINGKASAN AKHIR
+        # ============================================================
+        st.divider()
+        st.subheader("🎯 Action Plan — Langkah Selanjutnya")
+
+        with st.spinner("Groq AI membuat action plan..."):
+            action_prompt = f"""Berdasarkan analisis Audience Intelligence untuk {channel_context or niche_context},
+buat Action Plan konten yang sangat konkret dan actionable untuk 30 hari ke depan.
+
+Format:
+## 📅 Minggu 1 (Hari 1–7): Quick Win
+2 konten yang harus dibuat SEGERA — topik yang sudah terbukti dan mudah dibuat.
+
+## 📅 Minggu 2 (Hari 8–14): Pain Point Content
+2 konten yang menjawab pain point terbesar audiens.
+
+## 📅 Minggu 3 (Hari 15–21): Viral Attempt
+1 konten dengan potensi viral tertinggi — perlu riset dan produksi lebih matang.
+
+## 📅 Minggu 4 (Hari 22–30): Community Building
+1 konten yang memancing interaksi maksimal (Q&A, poll, challenge, atau collab).
+
+## ✅ 3 Hal yang Harus Dilakukan Sebelum Upload Video Berikutnya
+Checklist konkret berdasarkan temuan analisis di atas.
+
+Tulis dalam Bahasa Indonesia, spesifik dengan judul konten yang siap dipakai."""
+
+            action_result, err = call_groq(action_prompt, max_tokens=1000)
+
+        if action_result:
+            st.markdown(action_result)
+        else:
+            st.error(f"Gagal membuat action plan: {err}")
