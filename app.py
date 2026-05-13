@@ -237,91 +237,143 @@ def extract_topic(title, tags):
     return topic, tag_keyword
 
 def generate_titles(title, tags):
-    """Generate variasi judul baru berdasarkan judul asli dan tags"""
+    """Generate variasi judul menggunakan Groq AI"""
     topic, tag_keyword = extract_topic(title, tags)
+    tags_str = ', '.join(tags[:10]) if tags else 'tidak ada'
 
+    if GROQ_API_KEY:
+        prompt = f"""Kamu adalah YouTube title specialist berpengalaman.
+Buat 5 variasi judul YouTube yang menarik dan relevan berdasarkan:
+
+Judul asli: "{title}"
+Topik utama: {topic}
+Tags: {tags_str}
+
+Kriteria setiap judul:
+- Panjang 40–70 karakter
+- Mengandung kata emosional atau angka spesifik
+- Relevan dengan topik dan audiens yang tepat
+- Bervariasi: coba format pertanyaan, listicle, storytelling, curiosity gap, dan versus
+- Dalam bahasa yang sama dengan judul asli (Indonesia atau Inggris)
+
+Tulis HANYA 5 judul, satu per baris, tanpa nomor atau penjelasan tambahan."""
+
+        result, err = call_groq(prompt, max_tokens=300)
+        if result:
+            titles = [t.strip() for t in result.strip().split('\n') if t.strip()]
+            return titles[:5]
+
+    # Fallback ke template jika Groq tidak tersedia
     templates = [
         f"Fakta Menarik tentang {topic} yang Jarang Diketahui Publik",
         f"Inilah Kebenaran di Balik {topic} — Banyak yang Tidak Tahu!",
         f"{random.randint(3,7)} Fakta Mengejutkan tentang {topic}",
         f"Benarkah {topic}? Ini yang Sebenarnya Terjadi",
-        f"Mengapa {topic} Jadi Perbincangan Dunia? Ini Faktanya",
-        f"Kisah Tersembunyi {topic} yang Akhirnya Terungkap",
-        f"Apa yang Sebenarnya Terjadi antara {topic}?",
-        f"Semua Orang Salah Paham soal {topic} — Ini Kebenarannya",
-        f"{topic}: Fakta vs Rumor yang Perlu Kamu Ketahui",
         f"Sisi Lain {topic} yang Tidak Pernah Diceritakan Media",
     ]
-    return random.sample(templates, min(5, len(templates)))
+    return templates
 
 def generate_hooks(title, grade):
-    """Generate hook pembuka video berdasarkan judul dan grade"""
+    """Generate hook pembuka video menggunakan Groq AI"""
     topic, _ = extract_topic(title, [])
+
+    if GROQ_API_KEY:
+        prompt = f"""Kamu adalah YouTube scriptwriter profesional.
+Buat 4 variasi hook pembuka video (30 detik pertama) yang sangat kuat berdasarkan:
+
+Judul video: "{title}"
+Topik: {topic}
+Grade engagement: {grade}
+
+Kriteria setiap hook:
+- Panjang 15–30 kata
+- Langsung menyentuh pain point atau rasa ingin tahu
+- Mengandung curiosity gap, angka spesifik, atau pernyataan mengejutkan
+- Bervariasi: coba format pertanyaan, pernyataan mengejutkan, personal story, dan urgensi
+- Dalam bahasa yang sama dengan judul (Indonesia atau Inggris)
+- Natural seperti orang berbicara, bukan membaca teks
+
+Tulis HANYA 4 hook, satu per baris, tanpa nomor atau penjelasan tambahan."""
+
+        result, err = call_groq(prompt, max_tokens=300)
+        if result:
+            hooks = [h.strip() for h in result.strip().split('\n') if h.strip()]
+            return hooks[:4]
+
+    # Fallback ke template jika Groq tidak tersedia
     keyword = topic.lower()
-
     hooks = [
-        f"Pernahkah kamu bertanya-tanya kenapa {keyword.lower()} kamu tidak pernah berkembang? Dalam video ini, saya akan ungkap rahasianya.",
-        f"Hentikan dulu apa yang sedang kamu lakukan. Karena informasi tentang {keyword.lower()} yang akan saya bagikan ini bisa mengubah segalanya.",
-        f"Jika kamu sudah lama berjuang dengan {keyword.lower()} tanpa hasil, kamu berada di tempat yang tepat. Saksikan sampai habis.",
-        f"Dalam 60 detik ke depan, kamu akan tahu satu hal tentang {keyword.lower()} yang tidak pernah diajarkan di mana pun.",
-        f"Kebanyakan orang melakukan kesalahan besar soal {keyword.lower()}. Dan kemungkinan besar, kamu juga melakukannya.",
-        f"Saya hampir menyerah dengan {keyword.lower()} — sampai saya menemukan cara ini. Dan sekarang saya ingin membagikannya ke kamu.",
+        f"Pernahkah kamu bertanya-tanya kenapa {keyword} tidak pernah berkembang? Dalam video ini, saya ungkap rahasianya.",
+        f"Hentikan dulu apa yang sedang kamu lakukan — informasi tentang {keyword} ini bisa mengubah segalanya.",
+        f"Kebanyakan orang melakukan kesalahan besar soal {keyword}. Dan kemungkinan besar, kamu juga melakukannya.",
+        f"Saya hampir menyerah dengan {keyword} — sampai saya menemukan cara ini.",
     ]
-
-    if grade == "C-Tier":
-        hooks.insert(0, f"Video ini mungkin belum banyak yang tahu, tapi {keyword.lower()} yang akan kita bahas bisa jadi game changer buatmu.")
-
-    return random.sample(hooks, min(4, len(hooks)))
+    return hooks
 
 def generate_narasi(title, tags, grade, engagement):
-    """Generate struktur narasi video"""
-    keyword, tag_keyword = extract_topic(title, tags)
-    keyword = keyword.lower()
-    tag_keyword = tag_keyword.lower()
+    """Generate struktur narasi video menggunakan Groq AI"""
+    topic, tag_keyword = extract_topic(title, tags)
+    tags_str = ', '.join(tags[:10]) if tags else 'tidak ada'
 
-    narasi = f"""
-**🎬 Struktur Narasi yang Disarankan untuk: "{title}"**
+    if GROQ_API_KEY:
+        prompt = f"""Kamu adalah YouTube scriptwriter dan content strategist profesional.
+Buat struktur narasi video YouTube yang detail dan actionable berdasarkan:
 
----
+Judul video: "{title}"
+Topik: {topic}
+Tags: {tags_str}
+Engagement grade: {grade} ({engagement:.2f}%)
+
+Buat struktur narasi dengan format:
+
+**🎬 Struktur Narasi untuk: "{title}"**
 
 **[0:00 – 0:30] HOOK PEMBUKA**
-Buka dengan pernyataan mengejutkan atau pertanyaan yang relevan dengan {keyword.lower()}.
-Contoh: *"Tahukah kamu bahwa 90% kreator gagal karena satu kesalahan ini?"*
-
----
+[Tulis contoh kalimat hook yang spesifik dan kuat untuk topik ini]
 
 **[0:30 – 1:30] IDENTIFIKASI MASALAH**
-Jelaskan masalah yang dihadapi penonton terkait {tag_keyword.lower()}.
-Buat penonton merasa "ini persis masalah saya!" — bangun empati dulu sebelum solusi.
+[Tulis masalah spesifik yang dihadapi penonton terkait topik ini]
 
----
+**[1:30 – 4:00] ISI UTAMA**
+[Tulis 3 poin utama yang harus dibahas, spesifik untuk topik ini]
+- Poin 1: [spesifik]
+- Poin 2: [spesifik]
+- Poin 3: [spesifik]
 
-**[1:30 – 5:00] ISI UTAMA / SOLUSI**
-Sampaikan poin utama secara terstruktur. Gunakan format:
-- Poin 1: Penjelasan singkat + contoh nyata
-- Poin 2: Penjelasan singkat + contoh nyata
-- Poin 3: Penjelasan singkat + contoh nyata
-Gunakan visual, grafik, atau demo jika memungkinkan.
+**[4:00 – 4:30] BUKTI / CONTOH NYATA**
+[Tulis jenis bukti atau contoh yang relevan untuk topik ini]
 
----
+**[4:30 – 5:00] CTA PENUTUP**
+[Tulis contoh CTA yang spesifik dan natural untuk topik ini]
 
-**[5:00 – 5:30] BUKTI / HASIL**
-Tampilkan bukti, testimoni, atau hasil nyata yang mendukung klaimmu.
-Ini meningkatkan kredibilitas dan mendorong penonton percaya.
+**💡 Tips Produksi Spesifik**
+[3 tips produksi yang relevan untuk konten ini — B-roll, grafik, atau elemen visual yang disarankan]
 
----
+Tulis dalam bahasa yang sama dengan judul video. Sangat spesifik, bukan template generik."""
 
-**[5:30 – 6:00] CALL TO ACTION (CTA)**
-Tutup dengan CTA yang jelas:
-1. *"Kalau video ini bermanfaat, like dan subscribe ya!"*
-2. *"Komen di bawah: apa tantangan terbesarmu soal {keyword.lower()}?"*
-3. *"Tonton juga video ini untuk tips lanjutan → [tunjuk end screen]"*
+        result, err = call_groq(prompt, max_tokens=800)
+        if result:
+            return result
 
----
+    # Fallback ke template jika Groq tidak tersedia
+    keyword = topic.lower()
+    return f"""
+**🎬 Struktur Narasi untuk: "{title}"**
 
-> 💡 **Catatan:** Durasi di atas adalah estimasi untuk video 6 menit. Sesuaikan dengan format kontenmu.
+**[0:00 – 0:30] HOOK PEMBUKA**
+Buka dengan pertanyaan yang relevan dengan {keyword}.
+
+**[0:30 – 1:30] IDENTIFIKASI MASALAH**
+Jelaskan masalah yang dihadapi penonton terkait {keyword}.
+
+**[1:30 – 4:30] ISI UTAMA**
+- Poin 1: Penjelasan + contoh nyata
+- Poin 2: Penjelasan + contoh nyata
+- Poin 3: Penjelasan + contoh nyata
+
+**[4:30 – 5:00] CTA PENUTUP**
+Like, subscribe, dan ajak komentar dengan pertanyaan terbuka.
 """
-    return narasi
 
 def generate_battle_strategy(winner, loser, label_winner, label_loser):
     strategies = []
@@ -600,7 +652,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠"])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠", "Channel Growth Roadmap 🗺️", "Thumbnail Analyser 🖼️"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -2668,3 +2720,407 @@ Tulis dalam Bahasa Indonesia, spesifik dengan judul konten yang siap dipakai."""
             st.markdown(action_result)
         else:
             st.error(f"Gagal membuat action plan: {err}")
+
+elif mode == "Channel Growth Roadmap 🗺️":
+    st.subheader("🗺️ Channel Growth Roadmap")
+    st.markdown("Roadmap pertumbuhan channel **30 hari** yang spesifik dan actionable — ditenagai Groq AI.")
+
+    if not GROQ_API_KEY:
+        st.error("❌ GROQ_API_KEY belum diisi di Streamlit Secrets.")
+        st.stop()
+
+    st.markdown("### 📌 Input Channel")
+    channel_url_gr = st.text_input("Paste Link Channel YouTube Kamu", placeholder="https://www.youtube.com/@channelname", key="gr_channel")
+
+    st.markdown("### 🎯 Informasi Tambahan")
+    col1, col2 = st.columns(2)
+    with col1:
+        current_goal = st.text_input("Target utama kamu", placeholder="Contoh: Capai 1.000 subscriber, monetisasi AdSense")
+        content_freq = st.selectbox("Frekuensi upload saat ini", ["1x seminggu", "2x seminggu", "3x seminggu", "Setiap hari", "Belum konsisten"])
+    with col2:
+        channel_age = st.selectbox("Umur channel", ["Baru (<3 bulan)", "Berkembang (3–12 bulan)", "Established (>1 tahun)"])
+        biggest_challenge = st.text_input("Tantangan terbesar saat ini", placeholder="Contoh: Views rendah, susah dapat subscriber")
+
+    if st.button("🗺️ Generate Growth Roadmap 30 Hari", use_container_width=True, type="primary"):
+        if not channel_url_gr:
+            st.warning("Masukkan link channel YouTube!")
+            st.stop()
+
+        with st.spinner("Mengambil data channel..."):
+            try:
+                youtube = build('youtube', 'v3', developerKey=API_KEY)
+                handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_gr)
+                channel_id = None
+                if handle_match:
+                    sr = youtube.search().list(part="snippet", q=handle_match.group(1), type="channel", maxResults=1).execute()
+                    if sr['items']: channel_id = sr['items'][0]['snippet']['channelId']
+                ch_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', channel_url_gr)
+                if ch_match: channel_id = ch_match.group(1)
+
+                if not channel_id:
+                    st.error("Channel tidak ditemukan.")
+                    st.stop()
+
+                ch_resp = youtube.channels().list(part="snippet,statistics,contentDetails", id=channel_id).execute()
+                if not ch_resp['items']:
+                    st.error("Channel tidak ditemukan.")
+                    st.stop()
+
+                ch = ch_resp['items'][0]
+                ch_name = ch['snippet']['title']
+                subscribers = int(ch['statistics'].get('subscriberCount', 0))
+                total_views = int(ch['statistics'].get('viewCount', 0))
+                total_videos = int(ch['statistics'].get('videoCount', 0))
+                playlist_id = ch['contentDetails']['relatedPlaylists']['uploads']
+
+                pl_resp = youtube.playlistItems().list(part="contentDetails", playlistId=playlist_id, maxResults=10).execute()
+                video_ids = [i['contentDetails']['videoId'] for i in pl_resp['items']]
+                vids_resp = youtube.videos().list(part="snippet,statistics", id=','.join(video_ids)).execute()
+
+                videos_gr = []
+                for v in vids_resp['items']:
+                    stats = v.get('statistics', {})
+                    views = int(stats.get('viewCount', 0))
+                    likes = int(stats.get('likeCount', 0))
+                    comments = int(stats.get('commentCount', 0))
+                    eng = ((likes + comments) / views * 100) if views > 0 else 0
+                    videos_gr.append({"title": v['snippet']['title'], "views": views, "engagement": eng})
+
+                avg_eng = sum(v['engagement'] for v in videos_gr) / len(videos_gr) if videos_gr else 0
+                avg_views = sum(v['views'] for v in videos_gr) / len(videos_gr) if videos_gr else 0
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+                st.stop()
+
+        st.success(f"✅ Data channel **{ch_name}** berhasil diambil!")
+        st.divider()
+
+        # --- OVERVIEW ---
+        st.subheader(f"📊 Kondisi Channel Saat Ini: {ch_name}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Subscribers", f"{subscribers:,}")
+        c2.metric("Total Video", f"{total_videos:,}")
+        c3.metric("Avg Views", f"{int(avg_views):,}")
+        c4.metric("Avg Engagement", f"{avg_eng:.2f}%")
+
+        # Grade channel
+        if subscribers < 100: ch_grade, ch_color = "Pemula 🌱", "red"
+        elif subscribers < 1000: ch_grade, ch_color = "Berkembang 🌿", "orange"
+        elif subscribers < 10000: ch_grade, ch_color = "Growing 🌳", "blue"
+        elif subscribers < 100000: ch_grade, ch_color = "Established 🏆", "green"
+        else: ch_grade, ch_color = "Top Creator 🚀", "green"
+
+        st.markdown(f"**Level Channel:** :{ch_color}[{ch_grade}]")
+        st.divider()
+
+        # --- GENERATE ROADMAP ---
+        st.subheader("🗺️ Roadmap 30 Hari")
+
+        with st.spinner("Groq AI menyusun roadmap personalmu..."):
+            roadmap_prompt = f"""Kamu adalah coach YouTube profesional berpengalaman lebih dari 10 tahun.
+Buat roadmap pertumbuhan channel YouTube yang sangat spesifik dan actionable untuk 30 hari ke depan.
+
+DATA CHANNEL:
+- Nama: {ch_name}
+- Subscribers: {subscribers:,}
+- Total video: {total_videos}
+- Rata-rata views per video: {int(avg_views):,}
+- Rata-rata engagement: {avg_eng:.2f}%
+- Level: {ch_grade}
+- Umur channel: {channel_age}
+- Frekuensi upload saat ini: {content_freq}
+- Target utama: {current_goal or 'Tidak disebutkan'}
+- Tantangan terbesar: {biggest_challenge or 'Tidak disebutkan'}
+
+10 video terakhir:
+{chr(10).join([f"- {v['title']} ({v['views']:,} views, {v['engagement']:.2f}% eng)" for v in videos_gr[:10]])}
+
+Buat roadmap dengan format:
+
+## 🎯 Diagnosis Channel
+Analisis jujur kondisi channel saat ini — kekuatan dan kelemahan utama dalam 3–4 kalimat.
+
+## 📅 MINGGU 1 (Hari 1–7): FONDASI
+### Target minggu ini:
+### Aksi harian yang harus dilakukan:
+- Hari 1:
+- Hari 2:
+- Hari 3:
+- Hari 4:
+- Hari 5:
+- Hari 6–7:
+### KPI yang harus dicapai di akhir minggu 1:
+
+## 📅 MINGGU 2 (Hari 8–14): AKSELERASI
+### Target minggu ini:
+### Fokus utama:
+### 3 konten yang harus dibuat:
+### KPI yang harus dicapai:
+
+## 📅 MINGGU 3 (Hari 15–21): OPTIMASI
+### Target minggu ini:
+### Fokus utama:
+### 3 konten yang harus dibuat:
+### KPI yang harus dicapai:
+
+## 📅 MINGGU 4 (Hari 22–30): SCALING
+### Target minggu ini:
+### Fokus utama:
+### 3 konten yang harus dibuat:
+### KPI yang harus dicapai di akhir 30 hari:
+
+## ⚠️ 3 Hal yang JANGAN Dilakukan (berdasarkan kondisi channel ini)
+
+## 🏆 Milestone Realistis 30 Hari
+Prediksi subscribers, views, dan engagement di akhir 30 hari jika roadmap dijalankan konsisten.
+
+Tulis dalam Bahasa Indonesia. Sangat spesifik, personal, dan actionable."""
+
+            roadmap_result, err = call_groq(roadmap_prompt, max_tokens=2000)
+
+        if roadmap_result:
+            st.markdown(roadmap_result)
+            st.divider()
+
+            # --- DAILY CHECKLIST ---
+            st.subheader("✅ Daily Checklist Creator")
+            st.markdown("Rutinitas harian yang harus dilakukan selama 30 hari:")
+
+            with st.spinner("Generating daily checklist..."):
+                checklist_prompt = f"""Buat daily checklist yang ringkas untuk creator YouTube dengan kondisi:
+- Subscribers: {subscribers:,}
+- Avg engagement: {avg_eng:.2f}%
+- Target: {current_goal or 'Tumbuh konsisten'}
+- Frekuensi upload: {content_freq}
+
+Buat checklist harian dalam 2 kategori:
+
+## ⏰ Rutinitas Pagi (15 menit)
+5 hal yang harus dilakukan setiap pagi sebelum aktivitas lain.
+
+## 🌙 Rutinitas Malam (15 menit)
+5 hal yang harus dilakukan setiap malam untuk evaluasi dan persiapan esok hari.
+
+## 📊 Review Mingguan (30 menit setiap Minggu)
+5 hal yang harus dievaluasi setiap minggu.
+
+Tulis dalam Bahasa Indonesia, singkat dan langsung to the point."""
+
+                checklist_result, err2 = call_groq(checklist_prompt, max_tokens=600)
+
+            if checklist_result:
+                st.markdown(checklist_result)
+        else:
+            st.error(f"Gagal generate roadmap: {err}")
+
+elif mode == "Thumbnail Analyser 🖼️":
+    st.subheader("🖼️ Thumbnail Analyser")
+    st.markdown("Analisis kekuatan thumbnail video — dari URL kompetitor atau upload gambar sendiri.")
+
+    if not GROQ_API_KEY:
+        st.error("❌ GROQ_API_KEY belum diisi di Streamlit Secrets.")
+        st.stop()
+
+    # --- INPUT MODE ---
+    thumb_mode = st.radio(
+        "Analisis thumbnail dari:",
+        ["🔗 URL Video YouTube (kompetitor)", "📤 Upload Gambar Thumbnail"],
+        horizontal=True
+    )
+
+    thumbnail_url = ""
+    uploaded_thumb = None
+    video_title_thumb = ""
+    video_data_thumb = None
+
+    if "🔗" in thumb_mode:
+        video_url_thumb = st.text_input("Paste Link Video YouTube", placeholder="https://www.youtube.com/watch?v=...", key="thumb_url")
+        if video_url_thumb and st.button("🔍 Ambil Thumbnail", key="fetch_thumb"):
+            with st.spinner("Mengambil data video..."):
+                video_data_thumb = analyze_virality(video_url_thumb)
+                if video_data_thumb:
+                    vid_id = extract_video_id(video_url_thumb)
+                    thumbnail_url = f"https://img.youtube.com/vi/{vid_id}/maxresdefault.jpg"
+                    video_title_thumb = video_data_thumb['title']
+                    st.session_state['thumb_url_data'] = {
+                        "url": thumbnail_url,
+                        "title": video_title_thumb,
+                        "video_data": video_data_thumb
+                    }
+                else:
+                    st.error("Video tidak ditemukan.")
+
+        if 'thumb_url_data' in st.session_state:
+            td = st.session_state['thumb_url_data']
+            thumbnail_url = td['url']
+            video_title_thumb = td['title']
+            video_data_thumb = td['video_data']
+
+    else:
+        uploaded_thumb = st.file_uploader("Upload Gambar Thumbnail", type=["jpg", "jpeg", "png", "webp"])
+        video_title_thumb = st.text_input("Judul Video (opsional)", placeholder="Judul video untuk konteks analisis")
+
+    # Tampilkan thumbnail jika ada
+    if thumbnail_url or uploaded_thumb:
+        st.divider()
+        st.markdown("### 🖼️ Preview Thumbnail")
+
+        col_prev, col_info = st.columns([2, 1])
+        with col_prev:
+            if thumbnail_url:
+                st.image(thumbnail_url, caption=video_title_thumb, use_container_width=True)
+            elif uploaded_thumb:
+                st.image(uploaded_thumb, caption="Thumbnail kamu", use_container_width=True)
+
+        with col_info:
+            if video_data_thumb:
+                st.metric("Views", f"{video_data_thumb['views']:,}")
+                st.metric("Engagement", f"{video_data_thumb['engagement']:.2f}%")
+                st.metric("Grade", video_data_thumb['grade'])
+                st.caption(f"📅 {video_data_thumb['published_at'][:10]}")
+
+        st.divider()
+
+        # --- ANALISIS THUMBNAIL ---
+        st.markdown("### 🔍 Pilih Jenis Analisis")
+        col_a1, col_a2, col_a3 = st.columns(3)
+        with col_a1: do_ctr = st.checkbox("📈 CTR Potential Score", value=True)
+        with col_a2: do_design = st.checkbox("🎨 Design Element Analysis", value=True)
+        with col_a3: do_improve = st.checkbox("🚀 Improvement Suggestions", value=True)
+
+        if st.button("🖼️ Analisis Thumbnail Sekarang", use_container_width=True, type="primary"):
+
+            # Konteks video untuk analisis
+            video_context = ""
+            if video_data_thumb:
+                video_context = f"""
+Data video:
+- Judul: {video_data_thumb['title']}
+- Views: {video_data_thumb['views']:,}
+- Engagement: {video_data_thumb['engagement']:.2f}%
+- Grade: {video_data_thumb['grade']}
+- Tags: {', '.join(video_data_thumb['tags'][:10]) if video_data_thumb['tags'] else 'tidak ada'}
+"""
+            elif video_title_thumb:
+                video_context = f"Judul video: {video_title_thumb}"
+
+            st.divider()
+            st.subheader("📊 Hasil Analisis Thumbnail")
+
+            if do_ctr:
+                with st.spinner("Menghitung CTR Potential Score..."):
+                    ctr_prompt = f"""Kamu adalah YouTube thumbnail expert dan CTR optimization specialist.
+Analisis potensi CTR thumbnail berdasarkan informasi berikut:
+
+{video_context}
+URL thumbnail: {thumbnail_url if thumbnail_url else "User upload (tidak bisa diakses langsung)"}
+
+Berikan penilaian CTR Potential Score berdasarkan best practices industri:
+
+## 📈 CTR Potential Score: X/100
+
+### Breakdown Skor per Elemen:
+- Daya tarik visual (0–25): X/25 — [penjelasan]
+- Keterbacaan teks (0–20): X/20 — [penjelasan]
+- Relevansi dengan judul (0–20): X/20 — [penjelasan]
+- Emosi & curiosity gap (0–20): X/20 — [penjelasan]
+- Diferensiasi dari kompetitor (0–15): X/15 — [penjelasan]
+
+### Grade CTR:
+- 85–100: Excellent 🏆 — Thumbnail kelas dunia
+- 70–84: Good 🔥 — Di atas rata-rata
+- 50–69: Average ✅ — Perlu peningkatan
+- <50: Poor ⚠️ — Perlu redesign
+
+Berikan grade dan penjelasan singkat mengapa.
+Tulis dalam Bahasa Indonesia."""
+
+                    ctr_result, err = call_groq(ctr_prompt, max_tokens=600)
+
+                if ctr_result:
+                    with st.expander("📈 CTR Potential Score", expanded=True):
+                        st.markdown(ctr_result)
+                else:
+                    st.error(f"Gagal: {err}")
+
+            if do_design:
+                with st.spinner("Menganalisis elemen desain..."):
+                    design_prompt = f"""Kamu adalah YouTube thumbnail designer profesional.
+Analisis elemen desain thumbnail berdasarkan:
+
+{video_context}
+
+Berikan analisis mendalam:
+
+## 🎨 Analisis Elemen Desain
+
+### 🔤 Teks & Typography
+Apakah thumbnail menggunakan teks? Evaluasi: ukuran, keterbacaan, kontras, jumlah kata.
+Best practice: maksimal 3–5 kata, ukuran besar, kontras tinggi.
+
+### 🎭 Ekspresi & Manusia
+Apakah ada wajah/ekspresi manusia? Wajah ekspresif meningkatkan CTR hingga 38%.
+Evaluasi kekuatan emosi yang ditampilkan.
+
+### 🌈 Warna & Kontras
+Evaluasi skema warna. Warna cerah dan kontras tinggi terbukti meningkatkan CTR.
+Apakah thumbnail mudah dilihat di layar kecil (mobile)?
+
+### 📐 Komposisi & Layout
+Rule of thirds, focal point, negative space. Apakah mata penonton langsung tahu harus melihat ke mana?
+
+### 🎯 Brand Consistency
+Apakah ada elemen branding yang konsisten (warna khas, font, logo)?
+
+Tulis dalam Bahasa Indonesia, spesifik dan konstruktif."""
+
+                    design_result, err = call_groq(design_prompt, max_tokens=700)
+
+                if design_result:
+                    with st.expander("🎨 Design Element Analysis", expanded=True):
+                        st.markdown(design_result)
+                else:
+                    st.error(f"Gagal: {err}")
+
+            if do_improve:
+                with st.spinner("Generating improvement suggestions..."):
+                    improve_prompt = f"""Kamu adalah YouTube growth hacker dan thumbnail specialist.
+Berikan rekomendasi perbaikan thumbnail yang sangat konkret berdasarkan:
+
+{video_context}
+
+## 🚀 Rekomendasi Perbaikan Thumbnail
+
+### 🔴 Perbaikan Prioritas Tinggi (lakukan segera)
+3 perubahan yang paling berdampak pada CTR — spesifik dan langsung bisa dieksekusi.
+
+### 🟡 Perbaikan Prioritas Sedang
+3 perbaikan tambahan untuk memaksimalkan CTR.
+
+### ✅ Yang Sudah Baik (pertahankan)
+2–3 elemen yang sudah efektif dan harus dipertahankan.
+
+### 🖼️ Deskripsi Visual Thumbnail Ideal
+Deskripsikan seperti apa thumbnail yang ideal untuk video ini — cukup detail sehingga designer bisa langsung membuatnya.
+Format: Background, elemen utama, teks, warna, ekspresi, komposisi.
+
+### 🛠️ Tools yang Disarankan
+2–3 tools gratis/murah untuk membuat thumbnail berkualitas tinggi.
+
+Tulis dalam Bahasa Indonesia, actionable dan spesifik."""
+
+                    improve_result, err = call_groq(improve_prompt, max_tokens=800)
+
+                if improve_result:
+                    with st.expander("🚀 Improvement Suggestions", expanded=True):
+                        st.markdown(improve_result)
+                else:
+                    st.error(f"Gagal: {err}")
+
+            st.divider()
+            st.success("✅ Analisis selesai! Gunakan insight ini untuk membuat thumbnail yang lebih kuat.")
+            st.caption("⚠️ Analisis ini berbasis deskripsi konteks video — untuk hasil lebih akurat, pastikan judul dan data video diisi lengkap.")
+
+    else:
+        st.info("👆 Pilih sumber thumbnail di atas untuk memulai analisis.")
