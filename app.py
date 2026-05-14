@@ -1029,37 +1029,114 @@ def detect_dominant_format(titles):
     return formats, max(formats, key=formats.get)
 
 
+def clean_generated_hooks(text_output, limit=2):
+    """Bersihkan output AI agar hanya berisi hook final, tanpa nomor dan penjelasan."""
+    if not text_output:
+        return []
+
+    raw_lines = []
+    for block in re.split(r"\n\s*\n", text_output.strip()):
+        for line in block.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            line = re.sub(r"^[\-•*\d\.)\s]+", "", line).strip()
+            line = line.strip('"“”')
+            if len(line.split()) >= 8:
+                raw_lines.append(line)
+
+    seen = set()
+    hooks = []
+    for line in raw_lines:
+        key = line.lower()
+        if key not in seen:
+            hooks.append(line)
+            seen.add(key)
+        if len(hooks) >= limit:
+            break
+    return hooks
+
+
 def generate_hooks_from_pattern(dominant, top_video_title, channel_name):
-    words = [w for w in top_video_title.split() if len(w) > 3]
-    keyword = ' '.join(words[:3]) if words else "topik ini"
-    kw = keyword.lower()
-    hooks = {
-        "🔢 Listicle": [
-            f"Ada {random.randint(5,9)} hal tentang {kw} yang belum kamu ketahui — dan channel seperti {channel_name} sudah membuktikannya.",
-            f"Saya pelajari {random.randint(10,20)} video terbaik tentang {kw} dan menemukan pola yang selalu berulang. Ini dia.",
-        ],
-        "❓ Pertanyaan": [
-            f"Pernahkah kamu bertanya-tanya kenapa konten tentang {kw} milik orang lain selalu viral, sementara punyamu tidak?",
-            f"Apa yang sebenarnya membedakan creator sukses dari yang gagal ketika membahas {kw}? Jawabannya mengejutkan saya.",
-        ],
-        "📚 How-To": [
-            f"Dalam video ini saya akan tunjukkan cara yang benar tentang {kw} — cara yang dipakai creator top tapi jarang diajarkan secara gratis.",
-            f"Sebelum saya ajarkan cara {kw}, ada satu kesalahan fatal yang harus kamu hindari dulu. Kebanyakan orang melewatkan ini.",
-        ],
-        "📖 Storytelling": [
-            f"Dulu saya tidak percaya bahwa {kw} bisa mengubah segalanya. Sampai sesuatu terjadi yang memaksa saya berpikir ulang.",
-            f"Ini bukan tutorial biasa tentang {kw}. Ini adalah cerita tentang kegagalan saya — dan apa yang saya pelajari darinya.",
-        ],
-        "⚔️ Versus": [
-            f"Semua orang debat soal {kw} — tapi tidak ada yang benar-benar mengujinya secara langsung. Sampai hari ini.",
-            f"Saya bandingkan dua pendekatan berbeda untuk {kw} selama 30 hari. Hasilnya jauh dari yang saya ekspektasikan.",
-        ],
-        "🔍 Review": [
-            f"Saya jujur: sebelum mencoba {kw} sendiri, saya skeptis. Tapi setelah {random.randint(2,6)} bulan, saya harus akui sesuatu.",
-            f"Ini review paling jujur tentang {kw} yang akan kamu temukan — termasuk bagian yang tidak ingin didengar siapapun.",
-        ],
-    }
-    return hooks.get(dominant, hooks["❓ Pertanyaan"])
+    """
+    Fallback non-AI untuk saat Groq tidak tersedia.
+    Tetap dibuat lebih cinematic dan tidak memakai pola generik seperti
+    'Apa rahasia...' atau 'Bagaimana cara...'.
+    """
+    words = [w.strip("?!.,#") for w in top_video_title.split() if len(w.strip("?!.,#")) > 3]
+    topic = ' '.join(words[:4]) if words else "topik ini"
+    topic_lower = topic.lower()
+
+    return [
+        f"Banyak orang mengira masalahnya ada di strategi, padahal yang sering membuat {topic_lower} gagal adalah alasan emosional yang tidak pernah dibangun sejak awal.",
+        f"Yang membuat audiens bertahan bukan cuma informasi tentang {topic_lower}, tapi rasa bahwa konten ini sedang membongkar sesuatu yang selama ini mereka lewatkan.",
+    ]
+
+
+def generate_competitor_narrative_hooks(ch_data, titles, top_videos, dominant):
+    """
+    Competitor Narrative Intelligence.
+    Bukan meniru formula permukaan kompetitor, tapi mengekstrak tension psikologis,
+    audience desire, stakes, dan curiosity pattern dari judul/video kompetitor.
+    """
+    channel_name = ch_data.get("name", "kompetitor")
+    top_video_title = top_videos[0]["title"] if top_videos else ""
+    top_video_desc = top_videos[0].get("description", "") if top_videos else ""
+    recent_titles = "\n".join([f"- {t}" for t in titles[:10]])
+    top_context = "\n".join([
+        f"- {v['title']} | engagement {v.get('engagement', 0):.2f}% | views {v.get('views', 0):,}"
+        for v in top_videos[:5]
+    ])
+
+    if GROQ_API_KEY:
+        prompt = f"""Kamu adalah YouTube retention strategist dan narrative psychologist.
+Tugasmu: buat 2 hook pembuka video yang TERINSPIRASI dari kompetitor, tetapi JANGAN meniru formula permukaan mereka.
+
+DATA KOMPETITOR:
+Channel: {channel_name}
+Format dominan terdeteksi: {dominant}
+Video terbaik: {top_video_title}
+Deskripsi video terbaik: {top_video_desc[:700]}
+
+Judul terbaru kompetitor:
+{recent_titles}
+
+Video performa tertinggi:
+{top_context}
+
+KERANGKA ANALISIS YANG HARUS KAMU LAKUKAN DIAM-DIAM:
+1. Identifikasi audience fear / frustration / desire dari pola judul.
+2. Identifikasi invisible problem atau hidden tension yang bisa memicu retention.
+3. Ambil psikologinya, bukan kalimatnya.
+4. Buat hook baru yang terasa natural seperti pembuka video/podcast modern.
+
+ATURAN OUTPUT:
+- Tulis HANYA 2 hook final, satu hook per baris.
+- 18–35 kata per hook.
+- Bahasa mengikuti mayoritas judul kompetitor.
+- Harus spesifik, emosional, dan cinematic.
+- Jangan pakai formula generik seperti:
+  "Apa rahasia...", "Bagaimana cara...", "Pernahkah kamu...", "Di video ini...", "Kamu akan belajar...".
+- Jangan pakai emoji.
+- Jangan beri nomor, label, analisis, atau penjelasan.
+
+Contoh kualitas yang diharapkan:
+"Sebagian brand gagal bukan karena produknya buruk — tapi karena customer tidak pernah punya alasan emosional untuk tetap memilih mereka."
+"Kenapa ada brand yang selalu diingat, sementara brand lain perlahan dilupakan meskipun kualitas produknya sama-sama bagus?"
+"Customer sebenarnya tidak loyal pada produk — mereka loyal pada perasaan yang diberikan brand tersebut."""
+
+        result, err = call_groq(prompt, max_tokens=450)
+        hooks = clean_generated_hooks(result, limit=2)
+
+        banned_starts = (
+            "apa rahasia", "bagaimana cara", "pernahkah kamu", "di video ini",
+            "kamu akan", "inilah", "cara ", "tips "
+        )
+        if len(hooks) >= 2 and not any(h.lower().startswith(banned_starts) for h in hooks):
+            return hooks[:2]
+
+    return generate_hooks_from_pattern(dominant, top_video_title, channel_name)
+
 
 
 
@@ -2100,7 +2177,7 @@ elif mode == "Monetization Estimator 💰":
 
 elif mode == "Hook & Narrative Analyser 🎣":
     st.subheader("🎣 Hook & Narrative Analyser")
-    st.markdown("Analisis pola narasi kompetitor → generate hook terinspirasi dari formula mereka → score hook kamu.")
+    st.markdown("Analisis psikologi narasi kompetitor → generate hook baru berbasis tension, desire, dan retention → score hook kamu.")
 
     st.markdown("---")
     st.markdown("### 📌 Step 1 — Analisis Pola Narasi Kompetitor")
@@ -2115,27 +2192,8 @@ elif mode == "Hook & Narrative Analyser 🎣":
                 formats, dominant = detect_dominant_format(titles)
                 top_videos = sorted(ch_data["videos"], key=lambda x: x["engagement"], reverse=True)
                 top_video_title = top_videos[0]["title"] if top_videos else ""
-                if GROQ_API_KEY:
-                    with st.spinner("Groq AI membuat hook terinspirasi dari kompetitor..."):
-                        ch_name_tmp = ch_data["name"]
-                        titles_tmp = ", ".join(titles[:8])
-                        hook_prompt = (
-                            "Kamu adalah YouTube scriptwriter profesional. "
-                            "Buat 2 hook pembuka video terinspirasi dari kompetitor. "
-                            f"Channel: {ch_name_tmp}. Format: {dominant}. "
-                            f"Video terbaik: {top_video_title}. "
-                            f"Judul terbaru: {titles_tmp}. "
-                            "Buat 2 hook 20-35 kata dengan curiosity gap, dipisah baris kosong."
-                        )
-                        hooks_result, err = call_groq(hook_prompt, max_tokens=300)
-                    if hooks_result:
-                        generated_hooks = [h.strip() for h in hooks_result.strip().split("\n\n") if h.strip()][:2]
-                        if len(generated_hooks) < 2:
-                            generated_hooks = [h.strip() for h in hooks_result.strip().split("\n") if h.strip()][:2]
-                    else:
-                        generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data["name"])
-                else:
-                    generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data["name"])
+                with st.spinner("AI menganalisis psikologi narasi kompetitor dan membuat hook baru..."):
+                    generated_hooks = generate_competitor_narrative_hooks(ch_data, titles, top_videos, dominant)
                 st.session_state["narrative_data"] = ch_data
                 st.session_state["generated_hooks"] = generated_hooks
                 st.session_state["dominant_format"] = dominant
@@ -2200,7 +2258,8 @@ elif mode == "Hook & Narrative Analyser 🎣":
                     st.caption(f"Deskripsi: {v['description'][:200]}...")
 
         st.divider()
-        st.markdown("### 🎣 Step 3 — Hook Terinspirasi dari Formula Kompetitor")
+        st.markdown("### 🎣 Step 3 — Hook Berbasis Competitor Narrative Intelligence")
+        st.caption("Hook dibuat dari pola psikologis kompetitor: tension, audience desire, stakes, dan curiosity — bukan sekadar template pertanyaan.")
         for i, hook in enumerate(generated_hooks):
             col_hook, col_btn = st.columns([5, 1])
             with col_hook:
