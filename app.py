@@ -728,44 +728,126 @@ def score_hook(hook):
 
 
 def get_narrative_data(url_or_id):
+    """Ambil data channel dan 10 video terakhir untuk Hook & Narrative Analyser.
+
+    Perbaikan:
+    - Mendukung URL @handle, /channel/UC..., /c/name, /user/name, @handle langsung, dan Channel ID.
+    - Menampilkan error yang jelas jika channel/video tidak ditemukan.
+    - Aman jika channel tidak punya video publik.
+    """
     try:
+        if not url_or_id or not url_or_id.strip():
+            st.error("Masukkan link channel kompetitor terlebih dahulu.")
+            return None
+
+        raw_input = url_or_id.strip()
         youtube = build('youtube', 'v3', developerKey=API_KEY)
-        channel_id, handle = None, None
-        handle_match = re.search(r'youtube\.com\/@([\w.-]+)', url_or_id)
-        if handle_match: handle = handle_match.group(1)
-        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', url_or_id)
-        if channel_match: channel_id = channel_match.group(1)
-        if not channel_id and handle:
-            sr = youtube.search().list(part="snippet", q=handle, type="channel", maxResults=1).execute()
-            if sr['items']: channel_id = sr['items'][0]['snippet']['channelId']
-        if not channel_id: return None
-        ch = youtube.channels().list(part="snippet,contentDetails", id=channel_id).execute()
-        if not ch['items']: return None
-        name = ch['items'][0]['snippet']['title']
-        playlist_id = ch['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        pl = youtube.playlistItems().list(part="contentDetails", playlistId=playlist_id, maxResults=10).execute()
-        vids = youtube.videos().list(
-            part="snippet,statistics",
-            id=','.join([i['contentDetails']['videoId'] for i in pl['items']])
+        channel_id, handle_or_name = None, None
+
+        # Format: https://youtube.com/channel/UCxxxxx atau Channel ID langsung
+        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', raw_input)
+        if channel_match:
+            channel_id = channel_match.group(1)
+        elif raw_input.startswith('UC') and len(raw_input) > 20:
+            channel_id = raw_input
+
+        # Format: https://youtube.com/@handle atau @handle langsung
+        if not channel_id:
+            handle_match = re.search(r'(?:youtube\.com\/@|^@)([\w.-]+)', raw_input)
+            if handle_match:
+                handle_or_name = handle_match.group(1)
+
+        # Format lama: /c/name atau /user/name
+        if not channel_id and not handle_or_name:
+            custom_match = re.search(r'youtube\.com\/(?:c\/|user\/)([\w.-]+)', raw_input)
+            if custom_match:
+                handle_or_name = custom_match.group(1)
+
+        # Fallback: teks biasa dianggap nama channel/handle
+        if not channel_id and not handle_or_name:
+            handle_or_name = (
+                raw_input
+                .replace('https://', '')
+                .replace('http://', '')
+                .replace('www.', '')
+                .replace('youtube.com/', '')
+                .strip('/ ')
+            )
+
+        # Resolve handle/nama menjadi channel_id
+        if not channel_id and handle_or_name:
+            search_resp = youtube.search().list(
+                part="snippet",
+                q=handle_or_name,
+                type="channel",
+                maxResults=1
+            ).execute()
+            items = search_resp.get('items', [])
+            if items:
+                channel_id = items[0]['snippet']['channelId']
+
+        if not channel_id:
+            st.error("Channel tidak ditemukan. Coba gunakan format https://youtube.com/@namachannel atau Channel ID yang diawali UC.")
+            return None
+
+        # Ambil info channel dan uploads playlist
+        ch_resp = youtube.channels().list(
+            part="snippet,contentDetails",
+            id=channel_id
         ).execute()
+        ch_items = ch_resp.get('items', [])
+        if not ch_items:
+            st.error("Data channel tidak ditemukan dari YouTube API. Pastikan channel publik dan API key valid.")
+            return None
+
+        channel = ch_items[0]
+        name = channel['snippet']['title']
+        playlist_id = channel['contentDetails']['relatedPlaylists']['uploads']
+
+        # Ambil 10 video terakhir
+        pl_resp = youtube.playlistItems().list(
+            part="contentDetails",
+            playlistId=playlist_id,
+            maxResults=10
+        ).execute()
+        video_ids = [item['contentDetails']['videoId'] for item in pl_resp.get('items', [])]
+
+        if not video_ids:
+            st.error("Channel ini tidak memiliki video publik yang bisa dianalisis.")
+            return None
+
+        vids_resp = youtube.videos().list(
+            part="snippet,statistics",
+            id=','.join(video_ids)
+        ).execute()
+
         videos = []
-        for v in vids['items']:
+        for v in vids_resp.get('items', []):
             stats = v.get('statistics', {})
-            sn = v['snippet']
+            snippet = v.get('snippet', {})
             views = int(stats.get('viewCount', 0))
             likes = int(stats.get('likeCount', 0))
             comments = int(stats.get('commentCount', 0))
-            eng = ((likes + comments) / views * 100) if views > 0 else 0
+            engagement = ((likes + comments) / views * 100) if views > 0 else 0
+
             videos.append({
-                "title": sn['title'],
-                "description": sn.get('description', '')[:300],
-                "views": views, "engagement": eng,
+                "title": snippet.get('title', 'Tanpa judul'),
+                "description": snippet.get('description', '')[:300],
+                "views": views,
+                "likes": likes,
+                "comments": comments,
+                "engagement": engagement,
             })
+
+        if not videos:
+            st.error("Video publik ditemukan, tetapi statistik video tidak bisa dibaca.")
+            return None
+
         return {"name": name, "videos": videos}
+
     except Exception as e:
         st.error(f"Error get_narrative_data: {e}")
         return None
-
 
 def detect_dominant_format(titles):
     listicle = sum(1 for t in titles if t.split() and any(c.isdigit() for c in t.split()[0]))
@@ -1785,6 +1867,8 @@ elif mode == "Hook & Narrative Analyser 🎣":
                 st.session_state["ch_name"] = ch_data["name"]
                 st.session_state["titles"] = titles
                 st.rerun()
+            else:
+                st.error("Gagal menganalisis channel. Pastikan link channel benar, channel memiliki video publik, YouTube API key aktif, dan quota YouTube API masih tersedia.")
         else:
             st.warning("Masukkan link channel kompetitor!")
 
