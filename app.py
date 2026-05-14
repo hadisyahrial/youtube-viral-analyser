@@ -286,105 +286,163 @@ Tulis HANYA 5 judul, satu per baris, tanpa nomor atau penjelasan tambahan."""
     return templates
 
 def generate_hooks(title, grade):
-    """Generate hook pembuka video menggunakan Groq AI"""
+    """Generate hook pembuka video dengan retention psychology modern."""
     topic, _ = extract_topic(title, [])
 
     if GROQ_API_KEY:
-        prompt = f"""Kamu adalah YouTube scriptwriter profesional.
-Buat 4 variasi hook pembuka video (30 detik pertama) yang sangat kuat berdasarkan:
+        prompt = f"""Kamu adalah YouTube retention strategist dan scriptwriter profesional.
+Buat 4 variasi hook pembuka video yang mengikuti struktur high-retention modern.
 
 Judul video: "{title}"
 Topik: {topic}
 Grade engagement: {grade}
 
+Gunakan 4 angle berbeda:
+1. Pattern Interrupt + Invisible Threat
+2. Pain Point + Stakes
+3. Curiosity Gap + Open Loop
+4. Personal/Relatable Setup + Promise
+
 Kriteria setiap hook:
-- Panjang 15–30 kata
-- Langsung menyentuh pain point atau rasa ingin tahu
-- Mengandung curiosity gap, angka spesifik, atau pernyataan mengejutkan
-- Bervariasi: coba format pertanyaan, pernyataan mengejutkan, personal story, dan urgensi
-- Dalam bahasa yang sama dengan judul (Indonesia atau Inggris)
-- Natural seperti orang berbicara, bukan membaca teks
+- 20–40 kata
+- Langsung terasa personal untuk penonton
+- Ada tension: takut rugi, penasaran, bingung, atau ingin berubah
+- Jangan terdengar seperti iklan atau template
+- Dalam bahasa yang sama dengan judul asli
+- Natural seperti pembuka video/podcast profesional
 
 Tulis HANYA 4 hook, satu per baris, tanpa nomor atau penjelasan tambahan."""
 
-        result, err = call_groq(prompt, max_tokens=300)
+        result, err = call_groq(prompt, max_tokens=450)
         if result:
-            hooks = [h.strip() for h in result.strip().split('\n') if h.strip()]
+            hooks = [h.strip(" -•	") for h in result.strip().split('\n') if h.strip()]
             return hooks[:4]
 
-    # Fallback ke template jika Groq tidak tersedia
+    # Fallback retention-hook jika Groq tidak tersedia
     keyword = topic.lower()
     hooks = [
-        f"Pernahkah kamu bertanya-tanya kenapa {keyword} tidak pernah berkembang? Dalam video ini, saya ungkap rahasianya.",
-        f"Hentikan dulu apa yang sedang kamu lakukan — informasi tentang {keyword} ini bisa mengubah segalanya.",
-        f"Kebanyakan orang melakukan kesalahan besar soal {keyword}. Dan kemungkinan besar, kamu juga melakukannya.",
-        f"Saya hampir menyerah dengan {keyword} — sampai saya menemukan cara ini.",
+        f"Tanpa sadar, cara kita berinteraksi dengan {keyword} mungkin sedang membentuk kebiasaan buruk yang dampaknya baru terasa nanti.",
+        f"Masalah terbesar dari {keyword} bukan cuma yang terlihat di permukaan — tapi efek kecil yang pelan-pelan mengubah keputusan kita setiap hari.",
+        f"Kalau kamu pernah merasa stuck saat menghadapi {keyword}, ada satu pola yang sering luput dibahas orang.",
+        f"Di video ini kita bongkar kenapa {keyword} bisa terlihat sederhana, tapi sebenarnya punya pengaruh besar terhadap hidup dan performa kamu.",
     ]
     return hooks
 
 def generate_narasi(title, tags, grade, engagement):
-    """Generate struktur narasi video menggunakan Groq AI"""
+    """Generate struktur narasi video memakai Modern YouTube Retention Structure."""
     topic, tag_keyword = extract_topic(title, tags)
     tags_str = ', '.join(tags[:10]) if tags else 'tidak ada'
 
     if GROQ_API_KEY:
-        prompt = f"""Kamu adalah YouTube scriptwriter dan content strategist profesional.
-Buat struktur narasi video YouTube yang detail dan actionable berdasarkan:
+        prompt = f"""Kamu adalah YouTube retention strategist, podcast producer, dan scriptwriter profesional.
+Buat struktur narasi video/podcast YouTube yang modern, high-retention, dan siap dipakai berdasarkan:
 
 Judul video: "{title}"
 Topik: {topic}
 Tags: {tags_str}
 Engagement grade: {grade} ({engagement:.2f}%)
 
-Buat struktur narasi dengan format:
+Gunakan struktur wajib berikut:
 
-**🎬 Struktur Narasi untuk: "{title}"**
+**🎬 Struktur Narasi Retention untuk: "{title}"**
 
-**[0:00 – 0:30] HOOK PEMBUKA**
-[Tulis contoh kalimat hook yang spesifik dan kuat untuk topik ini]
+**[0:00 – 0:20] PATTERN INTERRUPT HOOK**
+Tulis 1–2 kalimat pembuka yang langsung menghentikan scroll. Gunakan invisible threat, curiosity gap, atau realisasi mengejutkan.
 
-**[0:30 – 1:30] IDENTIFIKASI MASALAH**
-[Tulis masalah spesifik yang dihadapi penonton terkait topik ini]
+**[0:20 – 0:45] PROBLEM ESCALATION**
+Perbesar masalah. Jelaskan kenapa topik ini lebih serius/relevan dari yang penonton kira.
 
-**[1:30 – 4:00] ISI UTAMA**
-[Tulis 3 poin utama yang harus dibahas, spesifik untuk topik ini]
-- Poin 1: [spesifik]
-- Poin 2: [spesifik]
-- Poin 3: [spesifik]
+**[0:45 – 1:10] STAKES / KONSEKUENSI**
+Tunjukkan akibat jika penonton mengabaikan masalah ini: waktu, uang, karier, kesehatan, hubungan, reputasi, atau kualitas hidup.
 
-**[4:00 – 4:30] BUKTI / CONTOH NYATA**
-[Tulis jenis bukti atau contoh yang relevan untuk topik ini]
+**[1:10 – 1:35] AUTHORITY / CONTEXT SETUP**
+Bangun kredibilitas: data, pengalaman, narasumber, studi kasus, atau alasan kenapa pembahasan ini layak dipercaya.
 
-**[4:30 – 5:00] CTA PENUTUP**
-[Tulis contoh CTA yang spesifik dan natural untuk topik ini]
+**[1:35 – 2:00] VALUE STACK / CONTENT PROMISE**
+Tulis bullet list berisi 5–8 hal spesifik yang akan dibahas. Buat seperti deskripsi YouTube profesional.
 
-**💡 Tips Produksi Spesifik**
-[3 tips produksi yang relevan untuk konten ini — B-roll, grafik, atau elemen visual yang disarankan]
+**[2:00 – 2:15] AUDIENCE IDENTIFICATION**
+Sebutkan siapa yang paling perlu menonton video ini dan gejala/pain point yang mereka rasakan.
 
-Tulis dalam bahasa yang sama dengan judul video. Sangat spesifik, bukan template generik."""
+**[2:15 – 2:30] OPEN LOOP**
+Buat satu kalimat yang menahan penonton agar lanjut menonton sampai bagian akhir.
 
-        result, err = call_groq(prompt, max_tokens=800)
+**[ISI UTAMA] MAIN DISCUSSION FLOW**
+Susun 3–5 bab utama. Untuk setiap bab berikan:
+- Premis utama
+- Contoh nyata
+- Visual/B-roll yang disarankan
+- Pertanyaan retoris untuk menjaga engagement
+
+**[MID-VIDEO REHOOK]**
+Tulis kalimat rehook untuk dipakai di tengah video agar retention tidak turun.
+
+**[ENDING] CTA + FUTURE TEASE**
+Tulis CTA yang natural: komentar, subscribe, komunitas, dan tease konten berikutnya.
+
+**[CHAPTER STRUCTURE]**
+Buat timecode 8–12 chapter seperti deskripsi YouTube profesional.
+
+Tulis dalam bahasa yang sama dengan judul video. Hindari output generik. Buat spesifik, emosional, dan actionable."""
+
+        result, err = call_groq(prompt, max_tokens=1400)
         if result:
             return result
 
-    # Fallback ke template jika Groq tidak tersedia
+    # Fallback retention structure jika Groq tidak tersedia
     keyword = topic.lower()
     return f"""
-**🎬 Struktur Narasi untuk: "{title}"**
+**🎬 Struktur Narasi Retention untuk: "{title}"**
 
-**[0:00 – 0:30] HOOK PEMBUKA**
-Buka dengan pertanyaan yang relevan dengan {keyword}.
+**[0:00 – 0:20] PATTERN INTERRUPT HOOK**
+Tanpa sadar, cara kita menghadapi {keyword} mungkin sedang membentuk kebiasaan yang pelan-pelan menurunkan kualitas hidup kita.
 
-**[0:30 – 1:30] IDENTIFIKASI MASALAH**
-Jelaskan masalah yang dihadapi penonton terkait {keyword}.
+**[0:20 – 0:45] PROBLEM ESCALATION**
+Masalahnya, banyak orang baru sadar saat dampaknya sudah terasa: fokus menurun, keputusan makin buruk, atau progress terasa stagnan.
 
-**[1:30 – 4:30] ISI UTAMA**
-- Poin 1: Penjelasan + contoh nyata
-- Poin 2: Penjelasan + contoh nyata
-- Poin 3: Penjelasan + contoh nyata
+**[0:45 – 1:10] STAKES / KONSEKUENSI**
+Kalau pola ini dibiarkan, efeknya bukan cuma ke konten atau pekerjaan, tapi juga ke energi, konsistensi, dan rasa percaya diri.
 
-**[4:30 – 5:00] CTA PENUTUP**
-Like, subscribe, dan ajak komentar dengan pertanyaan terbuka.
+**[1:10 – 1:35] AUTHORITY / CONTEXT SETUP**
+Di video ini, kita bahas {keyword} dari sudut pandang praktis: apa penyebabnya, kenapa sering terjadi, dan langkah sederhana untuk memperbaikinya.
+
+**[1:35 – 2:00] VALUE STACK / CONTENT PROMISE**
+Di video ini kita bahas:
+- Kenapa {keyword} penting untuk diperhatikan
+- Kesalahan yang paling sering tidak disadari
+- Dampaknya terhadap performa harian
+- Cara mengenali tanda-tandanya
+- Langkah sederhana untuk mulai memperbaiki
+
+**[2:00 – 2:15] AUDIENCE IDENTIFICATION**
+Video ini relevan untuk kamu yang merasa stuck, mudah terdistraksi, atau ingin membuat keputusan yang lebih baik dalam kehidupan sehari-hari.
+
+**[2:15 – 2:30] OPEN LOOP**
+Dan di bagian akhir, kita akan bahas satu kebiasaan kecil yang sering terlihat sepele, tapi dampaknya paling besar.
+
+**[ISI UTAMA] MAIN DISCUSSION FLOW**
+1. Masalah utama dan kenapa sering tidak disadari
+2. Dampak nyata dalam kehidupan sehari-hari
+3. Kesalahan umum yang memperparah kondisi
+4. Strategi praktis untuk memperbaiki
+5. Checklist sederhana untuk mulai hari ini
+
+**[MID-VIDEO REHOOK]**
+Sebelum lanjut, bagian berikut ini penting karena biasanya di sinilah kebanyakan orang merasa sudah paham, padahal justru sering salah mengambil langkah.
+
+**[ENDING] CTA + FUTURE TEASE**
+Kalau video ini membantu, tulis di komentar bagian mana yang paling relate. Subscribe untuk pembahasan lanjutan tentang strategi hidup, performa, dan pengembangan diri.
+
+**[CHAPTER STRUCTURE]**
+00:00 Opening
+00:20 Kenapa topik ini penting
+01:10 Konteks utama
+02:00 Untuk siapa video ini
+03:00 Masalah terbesar
+05:00 Dampak nyata
+07:00 Kesalahan umum
+09:00 Cara memperbaiki
+11:00 Kesimpulan dan langkah berikutnya
 """
 
 def generate_battle_strategy(winner, loser, label_winner, label_loser):
@@ -2492,12 +2550,18 @@ Tone: {tone}
 Durasi hook: 30–45 detik pertama (sekitar 75–100 kata)
 {competitor_context}
 
-Kriteria hook yang harus dipenuhi:
-1. Langsung menyentuh pain point atau rasa ingin tahu audiens
-2. Mengandung curiosity gap atau pernyataan mengejutkan
-3. Ada angka spesifik jika relevan
-4. Berikan alasan mengapa penonton harus terus menonton
-5. Tidak ada basa-basi atau intro panjang
+Struktur hook wajib:
+1. Pattern interrupt: kalimat pertama harus menghentikan scroll
+2. Problem escalation: tunjukkan kenapa masalah ini lebih serius dari yang terlihat
+3. Stakes: jelaskan risiko jika penonton mengabaikannya
+4. Value promise: beri alasan kuat untuk lanjut menonton
+5. Open loop: sisakan rasa penasaran untuk bagian akhir
+
+Kriteria hook:
+- Natural seperti pembuka video/podcast profesional
+- Tidak ada basa-basi, tidak menyapa terlalu panjang
+- Ada emotional tension: takut rugi, penasaran, relate, atau ingin berubah
+- Gunakan gaya bahasa sesuai tone
 
 Tulis HANYA teks hook-nya saja, tanpa label atau penjelasan tambahan."""
 
@@ -2526,13 +2590,39 @@ Tone: {tone}
 Durasi video: {duration} (buat script untuk bagian isi utama sekitar {int(min_dur)*2}–{int(min_dur)*3} menit)
 {competitor_context}
 
-Format script:
-- Bagi menjadi 3–5 segmen utama dengan judul segmen
-- Setiap segmen berisi penjelasan, contoh nyata, dan transisi ke segmen berikutnya
-- Gunakan format [VISUAL: ...] untuk menandai instruksi visual/B-roll
-- Sertakan [PAUSE] di momen yang butuh penekanan
-- Tulis dengan natural seperti orang berbicara, bukan membaca teks
+Format script wajib memakai Modern YouTube Retention Structure:
 
+[OPENING RECAP]
+- 1 kalimat yang menghubungkan hook ke isi utama
+
+[BAB 1 — PROBLEM DEEPENING]
+- Jelaskan masalah utama dengan contoh sehari-hari
+- Tambahkan [VISUAL: ...]
+- Akhiri dengan pertanyaan retoris
+
+[BAB 2 — WHY IT HAPPENS]
+- Jelaskan penyebab/pola yang sering tidak disadari
+- Tambahkan analogi sederhana
+- Tambahkan [PAUSE] untuk momen penting
+
+[BAB 3 — CONSEQUENCE / STAKES]
+- Jelaskan akibat nyata jika tidak diperbaiki
+- Hubungkan ke karier, hidup, uang, kesehatan, relasi, atau performa sesuai konteks
+
+[MID-VIDEO REHOOK]
+- Tulis 1 kalimat untuk mengembalikan perhatian penonton di tengah video
+
+[BAB 4 — SOLUTION / FRAMEWORK]
+- Berikan 3–5 langkah praktis
+- Setiap langkah harus actionable, bukan nasihat umum
+
+[BAB 5 — EXAMPLE / APPLICATION]
+- Berikan contoh penerapan realistis
+
+[CLOSING BRIDGE]
+- Rangkum insight utama dan arahkan ke CTA
+
+Tulis dengan natural seperti orang berbicara, bukan membaca teks. Gunakan [VISUAL: ...] dan [PAUSE] seperlunya.
 Tulis HANYA script-nya, tanpa penjelasan tambahan."""
 
                     body_result, err = call_groq(body_prompt, max_tokens=1500)
@@ -2589,12 +2679,28 @@ Niche: {niche_input or 'General'}
 Target audiens: {target_audience or 'Content creator'}
 {tags_context}
 
-Format deskripsi:
-1. Paragraf pertama (2–3 kalimat): ringkasan video + keyword utama
-2. Timestamps: buat 5–7 timestamp fiktif yang relevan dengan topik
-3. Tentang channel: 2 kalimat deskripsi channel
-4. Social media placeholder: Twitter, Instagram, TikTok
-5. Hashtags: 10–15 hashtag relevan di akhir
+Format deskripsi wajib mengikuti struktur modern:
+
+1. HOOK DESKRIPSI
+- 1 kalimat pembuka yang kuat, seperti: "Tanpa sadar..." / "Banyak orang tidak sadar..."
+
+2. NARRATIVE SETUP
+- Jelaskan konteks episode/video, masalah utama, dan kenapa penting
+
+3. VALUE STACK
+- Buat bullet list "Di video ini kita bahas:" berisi 7–10 poin spesifik
+
+4. AUDIENCE IDENTIFICATION
+- Tulis: "Video ini relevan untuk siapa pun yang..." lalu sebutkan pain point audiens
+
+5. CTA
+- CTA natural untuk subscribe, komentar, komunitas, atau link placeholder
+
+6. TIME CODE
+- Buat 8–12 chapter timestamp realistis
+
+7. HASHTAGS
+- 10–15 hashtag relevan
 
 Tulis deskripsi lengkapnya langsung tanpa penjelasan tambahan."""
 
