@@ -1756,19 +1756,50 @@ elif mode == "Hook & Narrative Analyser 🎣":
                 ch_data = get_narrative_data(ch_input)
 
             if ch_data:
-                st.session_state['narrative_data'] = ch_data
                 titles = [v['title'] for v in ch_data['videos']]
                 formats, dominant = detect_dominant_format(titles)
                 top_videos = sorted(ch_data['videos'], key=lambda x: x['engagement'], reverse=True)
                 top_video_title = top_videos[0]['title'] if top_videos else ""
-                generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data['name'])
+
+                # Generate hooks dengan Groq AI jika tersedia
+                if GROQ_API_KEY:
+                    with st.spinner("Groq AI membuat hook terinspirasi dari kompetitor..."):
+                        hook_prompt = f"""Kamu adalah YouTube scriptwriter profesional.
+Analisis pola narasi channel kompetitor berikut dan buat 2 hook pembuka video yang terinspirasi dari formula mereka.
+
+Nama channel: {ch_data['name']}
+Format narasi dominan: {dominant}
+Video terbaik mereka: "{top_video_title}"
+10 judul video terbaru:
+{chr(10).join([f"- {t}" for t in titles[:10]])}
+
+Buat 2 hook yang:
+1. Terinspirasi dari gaya dan format narasi channel ini
+2. Bisa dipakai creator lain di niche yang sama
+3. Panjang 20–35 kata per hook
+4. Natural seperti orang berbicara
+5. Mengandung curiosity gap atau urgensi
+
+Tulis HANYA 2 hook, dipisahkan dengan baris kosong, tanpa nomor atau label."""
+
+                        hooks_result, err = call_groq(hook_prompt, max_tokens=300)
+                        if hooks_result:
+                            generated_hooks = [h.strip() for h in hooks_result.strip().split('\n\n') if h.strip()][:2]
+                            if len(generated_hooks) < 2:
+                                generated_hooks = [h.strip() for h in hooks_result.strip().split('\n') if h.strip()][:2]
+                        else:
+                            generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data['name'])
+                else:
+                    generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data['name'])
+
+                st.session_state['narrative_data'] = ch_data
                 st.session_state['generated_hooks'] = generated_hooks
                 st.session_state['dominant_format'] = dominant
                 st.session_state['formats'] = formats
                 st.session_state['top_videos'] = top_videos
                 st.session_state['ch_name'] = ch_data['name']
                 st.session_state['titles'] = titles
-
+                st.rerun()
         else:
             st.warning("Masukkan link channel kompetitor!")
 
