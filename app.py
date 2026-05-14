@@ -30,6 +30,16 @@ try:
 except Exception:
     GROQ_API_KEY = "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"
 
+# --- CACHE SETTINGS ---
+# Cache ringan untuk mengurangi pemanggilan berulang ke YouTube API.
+# Data YouTube tidak harus real-time per detik, jadi TTL 30 menit aman untuk analisis creator.
+YOUTUBE_CACHE_TTL = 60 * 30
+
+@st.cache_resource(show_spinner=False)
+def get_youtube_service():
+    """Cache YouTube API client agar tidak rebuild berulang di setiap rerun Streamlit."""
+    return build('youtube', 'v3', developerKey=API_KEY)
+
 def call_groq(prompt, max_tokens=1500):
     """Panggil Groq API untuk generate teks"""
     if not GROQ_API_KEY:
@@ -67,13 +77,14 @@ def extract_video_id(url_or_id):
         st.error(f"Error saat membaca link: {e}")
     return url_or_id
 
+@st.cache_data(ttl=YOUTUBE_CACHE_TTL, show_spinner=False)
 def analyze_virality(video_id):
     try:
         clean_id = extract_video_id(video_id)
         if not clean_id:
             return None
 
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
+        youtube = get_youtube_service()
         request = youtube.videos().list(part="snippet,statistics", id=clean_id)
         response = request.execute()
 
@@ -722,10 +733,6 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-# --- SIDEBAR MENU SPACING ---
-# Menurunkan posisi menu "Pilih Mode Analisis" tanpa mengubah fitur lain.
-st.sidebar.markdown("<div style='height: 90px;'></div>", unsafe_allow_html=True)
-
 mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠", "Channel Growth Roadmap 🗺️", "Thumbnail Analyser 🖼️"])
 
 st.sidebar.divider()
@@ -896,6 +903,7 @@ Kalau akhir-akhir ini kamu gampang terdistraksi atau susah fokus, mungkin masala
 """
 
 
+@st.cache_data(ttl=YOUTUBE_CACHE_TTL, show_spinner=False)
 def get_narrative_data(url_or_id):
     """Ambil data channel dan 10 video terakhir untuk Hook & Narrative Analyser.
 
@@ -910,7 +918,7 @@ def get_narrative_data(url_or_id):
             return None
 
         raw_input = url_or_id.strip()
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
+        youtube = get_youtube_service()
         channel_id, handle_or_name = None, None
 
         # Format: https://youtube.com/channel/UCxxxxx atau Channel ID langsung
@@ -1510,10 +1518,11 @@ elif mode == "Competitor Tracker 🕵️":
             return url_or_id, None
         return None, url_or_id
 
+    @st.cache_data(ttl=YOUTUBE_CACHE_TTL, show_spinner=False)
     def analyze_channel(url_or_id):
         """Ambil data channel dan 10 video terakhir dari YouTube API"""
         try:
-            youtube = build('youtube', 'v3', developerKey=API_KEY)
+            youtube = get_youtube_service()
             channel_id, handle = extract_channel_id(url_or_id)
 
             # Cari channel berdasarkan handle jika tidak ada ID
@@ -1946,9 +1955,10 @@ elif mode == "Monetization Estimator 💰":
                         return url_or_id, None
                     return None, url_or_id
 
+                @st.cache_data(ttl=YOUTUBE_CACHE_TTL, show_spinner=False)
                 def get_channel_monetization_data(url_or_id):
                     try:
-                        youtube = build('youtube', 'v3', developerKey=API_KEY)
+                        youtube = get_youtube_service()
                         channel_id, handle = extract_channel_id_simple(url_or_id)
 
                         if not channel_id and handle:
@@ -2937,7 +2947,7 @@ elif mode == "Audience Intelligence 🧠":
         if has_channel:
             with st.spinner("Mengambil data channel..."):
                 try:
-                    youtube = build('youtube', 'v3', developerKey=API_KEY)
+                    youtube = get_youtube_service()
 
                     # Resolve channel ID
                     handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_ai)
@@ -3255,7 +3265,7 @@ elif mode == "Channel Growth Roadmap 🗺️":
 
         with st.spinner("Mengambil data channel..."):
             try:
-                youtube = build('youtube', 'v3', developerKey=API_KEY)
+                youtube = get_youtube_service()
                 handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_gr)
                 channel_id = None
                 if handle_match:
