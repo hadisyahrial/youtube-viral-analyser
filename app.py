@@ -733,11 +733,17 @@ if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
 # FUNGSI GLOBAL: HOOK & NARRATIVE ANALYSER
 # ============================================================
 def score_hook(hook):
+    """Skor cepat berbasis sinyal objektif.
+
+    Catatan:
+    - Fungsi ini sengaja TIDAK lagi memberi contoh kalimat template/hardcoded.
+    - Rekomendasi spesifik dibuat oleh ai_hook_doctor() agar kontekstual sesuai hook, niche, dan pola kompetitor.
+    """
     hook_lower = hook.lower()
     words = hook.split()
     score = 0
     feedback = []
-    improvements = []
+    improvement_signals = []
 
     word_count = len(words)
     if 10 <= word_count <= 30:
@@ -746,55 +752,144 @@ def score_hook(hook):
     elif word_count < 10:
         score += 8
         feedback.append(("⚠️", f"Hook terlalu pendek ({word_count} kata)."))
-        improvements.append("Tambahkan konteks. Target 15–25 kata.")
+        improvement_signals.append("Hook terlalu pendek dan perlu konteks yang lebih konkret.")
     else:
         score += 10
         feedback.append(("⚠️", f"Hook terlalu panjang ({word_count} kata)."))
-        improvements.append("Pangkas menjadi maksimal 30 kata.")
+        improvement_signals.append("Hook terlalu panjang dan perlu dipadatkan agar lebih cepat menangkap perhatian.")
 
     curiosity_words = ['tahukah','ternyata','rahasia','mengejutkan','tidak disangka',
                        'siapa sangka','fakta','sebenarnya','did you know','secret',
-                       'surprising','shocked','truth','exposed','revealed','hampir']
+                       'surprising','shocked','truth','exposed','revealed','hampir',
+                       'diam-diam','tanpa sadar','jarang','tersembunyi']
     if any(w in hook_lower for w in curiosity_words):
         score += 20
         feedback.append(("✅", "Mengandung curiosity gap — memancing rasa ingin tahu."))
     else:
-        feedback.append(("❌", "Tidak ada curiosity gap."))
-        improvements.append("Tambahkan: 'Yang tidak pernah diceritakan orang lain adalah...'")
+        feedback.append(("❌", "Curiosity gap belum kuat."))
+        improvement_signals.append("Tambahkan rasa penasaran dengan gap informasi yang belum dijawab di awal.")
 
     if any(c.isdigit() for c in hook):
         score += 15
         feedback.append(("✅", "Mengandung angka spesifik — konkret dan kredibel."))
     else:
-        feedback.append(("⚠️", "Tidak ada angka spesifik."))
-        improvements.append("Tambahkan angka. Contoh: '9 dari 10 creator gagal di langkah pertama'.")
+        feedback.append(("⚠️", "Belum ada angka spesifik."))
+        improvement_signals.append("Pertimbangkan angka, durasi, jumlah kesalahan, atau ukuran dampak jika relevan dengan topik.")
 
     urgency_words = ['sekarang','jangan','stop','hentikan','sebelum terlambat',
                      'penting','harus','wajib','segera','now','before',
-                     'immediately','urgent','critical','must','never']
+                     'immediately','urgent','critical','must','never','mulai hari ini']
     if any(w in hook_lower for w in urgency_words):
         score += 15
         feedback.append(("✅", "Mengandung urgensi/FOMO."))
     else:
-        feedback.append(("⚠️", "Tidak ada urgensi."))
-        improvements.append("Tambahkan: 'Sebelum kamu upload video berikutnya, tonton ini dulu.'")
+        feedback.append(("⚠️", "Urgensi belum terasa kuat."))
+        improvement_signals.append("Perjelas kenapa penonton perlu peduli sekarang, bukan nanti.")
 
-    personal_words = ['saya','aku','kamu','kita','i ','my ','you ','we ',
+    personal_words = ['saya','aku','gw','gue','lo','kamu','kita','i ','my ','you ','we ',
                       'your','our','me ','pernah','dulu','cerita','pengalaman']
     if any(w in hook_lower for w in personal_words):
         score += 15
-        feedback.append(("✅", "Mengandung elemen personal."))
+        feedback.append(("✅", "Mengandung elemen personal/relatable."))
     else:
-        feedback.append(("⚠️", "Kurang personal."))
-        improvements.append("Gunakan kata 'kamu' atau cerita personal singkat.")
+        feedback.append(("⚠️", "Relatability masih bisa diperkuat."))
+        improvement_signals.append("Hubungkan hook dengan pengalaman atau rasa sakit penonton secara lebih langsung.")
 
     if '?' in hook:
         score += 15
         feedback.append(("✅", "Menggunakan pertanyaan — otak otomatis mencari jawaban."))
     else:
-        feedback.append(("💡", "Pertimbangkan menambahkan pertanyaan retoris."))
+        feedback.append(("💡", "Bisa lebih kuat jika ada open loop atau pertanyaan implisit."))
+        improvement_signals.append("Buat open loop yang membuat penonton ingin tahu jawaban berikutnya.")
 
-    return score, feedback, improvements
+    return min(score, 100), feedback, improvement_signals
+
+
+def ai_hook_doctor(hook, competitor_context="", max_tokens=700):
+    """AI Hook Doctor: memberi feedback kontekstual, bukan template statis.
+
+    Output dibuat dinamis dari isi hook, konteks kompetitor, dan prinsip retention psychology.
+    Jika Groq tidak tersedia/gagal, fungsi memberi fallback yang tetap kontekstual tanpa contoh hardcoded generik.
+    """
+    if not hook or not hook.strip():
+        return None
+
+    prompt = f"""Kamu adalah AI Hook Doctor untuk YouTube.
+Analisis hook berikut secara spesifik dan kontekstual, bukan dengan template umum.
+
+HOOK USER:
+\"{hook}\"
+
+KONTEKS KOMPETITOR / CHANNEL:
+{competitor_context or 'Tidak ada konteks tambahan.'}
+
+Tugas:
+1. Jelaskan kelemahan terbesar hook ini dalam 2-3 poin singkat.
+2. Jelaskan kekuatan hook ini jika ada.
+3. Berikan 3 rekomendasi perbaikan yang spesifik untuk topik hook ini.
+4. Tulis 3 versi rewrite hook yang lebih kuat:
+   - Versi Fear / Invisible Threat
+   - Versi Curiosity Gap
+   - Versi Relatable / Conversational
+
+Aturan:
+- Jangan pakai kalimat template seperti "Yang tidak pernah diceritakan orang lain..." kecuali benar-benar relevan.
+- Jangan generik.
+- Sesuaikan dengan bahasa hook user.
+- Fokus pada retention, curiosity, stakes, dan emotional relevance.
+- Format output dengan markdown yang rapi.
+"""
+
+    if GROQ_API_KEY:
+        result, err = call_groq(prompt, max_tokens=max_tokens)
+        if result:
+            return result
+
+    # Fallback kontekstual ringan tanpa template statis.
+    words = [w.strip('.,!?;:"').lower() for w in hook.split() if len(w.strip('.,!?;:"')) > 3]
+    topic_hint = ' '.join(words[:4]) if words else 'topik ini'
+    hook_lower = hook.lower()
+
+    weaknesses = []
+    strengths = []
+
+    if len(hook.split()) < 10:
+        weaknesses.append("Hook masih terlalu pendek, sehingga problem dan stakes belum cukup terasa.")
+    if '?' not in hook and not any(x in hook_lower for x in ['tanpa sadar', 'ternyata', 'diam-diam', 'kenapa']):
+        weaknesses.append("Open loop belum kuat; penonton belum diberi alasan jelas untuk menunggu jawaban.")
+    if not any(x in hook_lower for x in ['rusak', 'takut', 'salah', 'fatal', 'bahaya', 'menurun', 'gagal', 'hilang']):
+        weaknesses.append("Emotional stakes masih bisa dinaikkan agar terasa lebih penting.")
+    if any(x in hook_lower for x in ['tanpa sadar', 'ternyata', 'diam-diam']):
+        strengths.append("Hook sudah punya elemen invisible threat yang bagus.")
+    if any(x in hook_lower for x in ['otak', 'fokus', 'memori', 'mental']):
+        strengths.append("Topiknya dekat dengan keresahan sehari-hari, jadi mudah dibuat relatable.")
+
+    weaknesses_md = '\n'.join([f"- {w}" for w in weaknesses]) or "- Hook sudah cukup jelas, tetapi masih bisa dibuat lebih spesifik dan emosional."
+    strengths_md = '\n'.join([f"- {s}" for s in strengths]) or "- Hook punya fondasi topik yang bisa diperkuat dengan contoh konkret."
+
+    return f"""### 🩺 AI Hook Doctor
+
+#### Kelemahan Utama
+{weaknesses_md}
+
+#### Kekuatan Hook
+{strengths_md}
+
+#### Rekomendasi Kontekstual
+- Buat dampaknya lebih konkret: jelaskan apa yang berubah pada hidup penonton jika masalah ini dibiarkan.
+- Tambahkan contoh kebiasaan spesifik agar hook terasa dekat dengan pengalaman sehari-hari.
+- Akhiri dengan open loop yang membuat penonton ingin tahu penyebab atau solusinya.
+
+#### Rewrite Hook
+**Fear / Invisible Threat:**  
+Tanpa sadar, kebiasaan kecil seputar {topic_hint} bisa pelan-pelan mengganggu cara kita fokus, berpikir, dan mengambil keputusan.
+
+**Curiosity Gap:**  
+Kenapa sesuatu yang terlihat normal seperti {topic_hint} bisa punya efek besar ke cara otak kita bekerja setiap hari?
+
+**Relatable / Conversational:**  
+Kalau akhir-akhir ini kamu gampang terdistraksi atau susah fokus, mungkin masalahnya bukan malas — tapi kebiasaan harian yang diam-diam membentuk ulang otakmu.
+"""
 
 
 def get_narrative_data(url_or_id):
@@ -2148,9 +2243,21 @@ elif mode == "Hook & Narrative Analyser 🎣":
                     elif icon == "⚠️": st.warning(f"{icon} {msg}")
                     else: st.info(f"{icon} {msg}")
 
-                if improvements:
-                    st.divider()
-                    st.markdown("#### 🚀 Rekomendasi Perbaikan")
+                st.divider()
+                st.markdown("#### 🩺 AI Hook Doctor — Feedback Kontekstual")
+                competitor_context = f"""
+Channel kompetitor: {ch_name}
+Format dominan: {dominant}
+Video terbaik kompetitor: {top_videos[0]['title'] if top_videos else '-'}
+Judul terbaru kompetitor: {', '.join(titles[:8]) if titles else '-'}
+"""
+                with st.spinner("AI Hook Doctor menganalisis hook secara kontekstual..."):
+                    doctor_result = ai_hook_doctor(hook_input, competitor_context=competitor_context)
+
+                if doctor_result:
+                    st.markdown(doctor_result)
+                elif improvements:
+                    st.markdown("#### Sinyal yang Perlu Diperbaiki")
                     for idx2, imp in enumerate(improvements, 1):
                         st.info(f"**{idx2}.** {imp}")
 
