@@ -722,6 +722,10 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
+# --- SIDEBAR MENU SPACING ---
+# Menurunkan posisi menu "Pilih Mode Analisis" tanpa mengubah fitur lain.
+st.sidebar.markdown("<div style='height: 90px;'></div>", unsafe_allow_html=True)
+
 mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠", "Channel Growth Roadmap 🗺️", "Thumbnail Analyser 🖼️"])
 
 st.sidebar.divider()
@@ -3627,4 +3631,3 @@ Tulis dalam Bahasa Indonesia, actionable dan spesifik."""
 
     else:
         st.info("👆 Pilih sumber thumbnail di atas untuk memulai analisis.")
-
