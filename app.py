@@ -728,6 +728,11 @@ if st.sidebar.button("🚪 Logout"):
 st.sidebar.markdown(f"👤 Login sebagai: **{st.session_state.username}**")
 st.sidebar.divider()
 
+# --- PENYESUAIAN POSISI MENU SIDEBAR ---
+# Memberi ruang vertikal agar dropdown "Pilih Mode Analisis" turun
+# dan daftar menu tidak terpotong saat dibuka.
+st.sidebar.markdown("<div style='height: 170px;'></div>", unsafe_allow_html=True)
+
 st.title("🚀 YouTube Viral Analyser Pro")
 st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
 
