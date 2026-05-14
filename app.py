@@ -7,6 +7,18 @@ import re
 import time
 import bcrypt
 
+# Optional dependency untuk Audience Intelligence semantic clustering.
+# Install jika ingin mengaktifkan fitur ini:
+# pip install sentence-transformers scikit-learn
+try:
+    from sentence_transformers import SentenceTransformer
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+except Exception:
+    SentenceTransformer = None
+    KMeans = None
+    silhouette_score = None
+
 # --- KONFIGURASI ---
 try:
     API_KEY = st.secrets["AIzaSyCoTQTLR8YCopYzHOV-f9a5mY4y9KXT7GA"]
@@ -606,181 +618,6 @@ def show_disclaimer():
 st.set_page_config(page_title="YouTube Viral Analyser Pro", page_icon="🚀", layout="wide")
 
 # --- AUTENTIKASI SEDERHANA ---
-
-# ============================================================
-# FUNGSI GLOBAL: HOOK & NARRATIVE ANALYSER
-# ============================================================
-
-def score_hook(hook):
-    hook_lower = hook.lower()
-    words = hook.split()
-    score = 0
-    feedback = []
-    improvements = []
-
-    word_count = len(words)
-    if 10 <= word_count <= 30:
-        score += 20
-        feedback.append(("✅", f"Panjang hook ideal ({word_count} kata)."))
-    elif word_count < 10:
-        score += 8
-        feedback.append(("⚠️", f"Hook terlalu pendek ({word_count} kata)."))
-        improvements.append("Tambahkan konteks. Target 15-25 kata.")
-    else:
-        score += 10
-        feedback.append(("⚠️", f"Hook terlalu panjang ({word_count} kata)."))
-        improvements.append("Pangkas menjadi maksimal 30 kata.")
-
-    curiosity_words = ['tahukah','ternyata','rahasia','mengejutkan','siapa sangka',
-                       'fakta','sebenarnya','did you know','secret','surprising',
-                       'shocked','truth','exposed','revealed','hampir']
-    if any(w in hook_lower for w in curiosity_words):
-        score += 20
-        feedback.append(("✅", "Mengandung curiosity gap."))
-    else:
-        feedback.append(("❌", "Tidak ada curiosity gap."))
-        improvements.append("Tambahkan elemen yang memancing rasa penasaran.")
-
-    if any(c.isdigit() for c in hook):
-        score += 15
-        feedback.append(("✅", "Mengandung angka spesifik."))
-    else:
-        feedback.append(("⚠️", "Tidak ada angka spesifik."))
-        improvements.append("Tambahkan angka. Contoh: 9 dari 10 creator gagal di langkah pertama.")
-
-    urgency_words = ['sekarang','jangan','stop','hentikan','penting','harus',
-                     'wajib','segera','now','before','immediately','must','never']
-    if any(w in hook_lower for w in urgency_words):
-        score += 15
-        feedback.append(("✅", "Mengandung urgensi/FOMO."))
-    else:
-        feedback.append(("⚠️", "Tidak ada urgensi."))
-        improvements.append("Tambahkan urgensi: Sebelum upload video berikutnya, tonton ini dulu.")
-
-    personal_words = ['saya','aku','kamu','kita','pernah','dulu','cerita','pengalaman']
-    if any(w in hook_lower for w in personal_words):
-        score += 15
-        feedback.append(("✅", "Mengandung elemen personal."))
-    else:
-        feedback.append(("⚠️", "Kurang personal."))
-        improvements.append("Gunakan kata kamu atau cerita personal singkat.")
-
-    if '?' in hook:
-        score += 15
-        feedback.append(("✅", "Menggunakan pertanyaan."))
-    else:
-        feedback.append(("💡", "Pertimbangkan menambahkan pertanyaan retoris."))
-
-    return score, feedback, improvements
-
-
-def get_narrative_data(url_or_id):
-    try:
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
-        channel_id = None
-        handle = None
-        handle_match = re.search(r'youtube\.com\/@([\w.-]+)', url_or_id)
-        if handle_match:
-            handle = handle_match.group(1)
-        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', url_or_id)
-        if channel_match:
-            channel_id = channel_match.group(1)
-        if not channel_id and handle:
-            sr = youtube.search().list(
-                part="snippet", q=handle, type="channel", maxResults=1
-            ).execute()
-            if sr.get('items'):
-                channel_id = sr['items'][0]['snippet']['channelId']
-        if not channel_id:
-            st.error("Channel tidak ditemukan.")
-            return None
-        ch = youtube.channels().list(
-            part="snippet,contentDetails", id=channel_id
-        ).execute()
-        if not ch.get('items'):
-            return None
-        name = ch['items'][0]['snippet']['title']
-        playlist_id = ch['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        pl = youtube.playlistItems().list(
-            part="contentDetails", playlistId=playlist_id, maxResults=10
-        ).execute()
-        video_ids = [i['contentDetails']['videoId'] for i in pl.get('items', [])]
-        if not video_ids:
-            return None
-        vids = youtube.videos().list(
-            part="snippet,statistics", id=','.join(video_ids)
-        ).execute()
-        videos = []
-        for v in vids.get('items', []):
-            stats = v.get('statistics', {})
-            sn = v.get('snippet', {})
-            views = int(stats.get('viewCount', 0))
-            likes = int(stats.get('likeCount', 0))
-            comments = int(stats.get('commentCount', 0))
-            eng = ((likes + comments) / views * 100) if views > 0 else 0
-            videos.append({
-                "title": sn.get('title', ''),
-                "description": sn.get('description', '')[:300],
-                "views": views,
-                "engagement": eng,
-            })
-        return {"name": name, "videos": videos}
-    except Exception as e:
-        st.error(f"Error get_narrative_data: {e}")
-        return None
-
-
-def detect_dominant_format(titles):
-    listicle = sum(1 for t in titles if t.split() and any(c.isdigit() for c in t.split()[0]))
-    question = sum(1 for t in titles if '?' in t)
-    howto = sum(1 for t in titles if any(w in t.lower() for w in ['how','cara','tutorial','tips','trick','guide','panduan']))
-    story = sum(1 for t in titles if any(w in t.lower() for w in ['story','cerita','pengalaman','journey','kenapa','saya']))
-    versus = sum(1 for t in titles if any(w in t.lower() for w in ['vs','versus','atau','better','best','terbaik']))
-    review = sum(1 for t in titles if any(w in t.lower() for w in ['review','honest','jujur','worth','test','tried']))
-    formats = {
-        "🔢 Listicle": listicle,
-        "❓ Pertanyaan": question,
-        "📚 How-To": howto,
-        "📖 Storytelling": story,
-        "⚔️ Versus": versus,
-        "🔍 Review": review,
-    }
-    dominant = max(formats, key=formats.get)
-    return formats, dominant
-
-
-def generate_hooks_from_pattern(dominant, top_video_title, channel_name):
-    words = [w for w in top_video_title.split() if len(w) > 3]
-    kw = ' '.join(words[:3]).lower() if words else "topik ini"
-    hook_map = {
-        "🔢 Listicle": [
-            f"Ada {random.randint(5,9)} hal tentang {kw} yang belum kamu ketahui — dan channel seperti {channel_name} sudah membuktikannya.",
-            f"Saya pelajari {random.randint(10,20)} video terbaik tentang {kw} dan menemukan pola yang selalu berulang. Ini dia.",
-        ],
-        "❓ Pertanyaan": [
-            f"Pernahkah kamu bertanya-tanya kenapa konten tentang {kw} milik orang lain selalu viral, sementara punyamu tidak?",
-            f"Apa yang sebenarnya membedakan creator sukses dari yang gagal ketika membahas {kw}? Jawabannya mengejutkan saya.",
-        ],
-        "📚 How-To": [
-            f"Dalam video ini saya tunjukkan cara yang benar tentang {kw} — cara yang dipakai creator top tapi jarang diajarkan gratis.",
-            f"Sebelum saya ajarkan cara {kw}, ada satu kesalahan fatal yang harus kamu hindari. Kebanyakan orang melewatkan ini.",
-        ],
-        "📖 Storytelling": [
-            f"Dulu saya tidak percaya bahwa {kw} bisa mengubah segalanya. Sampai sesuatu terjadi yang memaksa saya berpikir ulang.",
-            f"Ini bukan tutorial biasa tentang {kw}. Ini cerita tentang kegagalan saya dan apa yang saya pelajari darinya.",
-        ],
-        "⚔️ Versus": [
-            f"Semua orang debat soal {kw} tapi tidak ada yang benar-benar mengujinya secara langsung. Sampai hari ini.",
-            f"Saya bandingkan dua pendekatan berbeda untuk {kw} selama 30 hari. Hasilnya jauh dari yang saya ekspektasikan.",
-        ],
-        "🔍 Review": [
-            f"Saya jujur: sebelum mencoba {kw} sendiri, saya skeptis. Tapi setelah {random.randint(2,6)} bulan, saya harus akui sesuatu.",
-            f"Ini review paling jujur tentang {kw} yang akan kamu temukan — termasuk bagian yang tidak ingin didengar siapapun.",
-        ],
-    }
-    return hook_map.get(dominant, hook_map["❓ Pertanyaan"])
-
-
 def check_password(username, password):
     try:
         # Format secrets: USER_admin = "password123"
@@ -827,18 +664,7 @@ st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**
 
 show_disclaimer()
 
-mode = st.sidebar.selectbox("Pilih Mode Analisis", [
-    "Single Analysis",
-    "Video Battle ⚔️",
-    "Competitor Tracker 🕵️",
-    "Monetization Estimator 💰",
-    "Hook & Narrative Analyser 🎣",
-    "Content Repurposing Planner 🔄",
-    "Script Video Generator 📝",
-    "Audience Intelligence 🧠",
-    "Channel Growth Roadmap 🗺️",
-    "Thumbnail Analyser 🖼️",
-])
+mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Battle ⚔️", "Competitor Tracker 🕵️", "Monetization Estimator 💰", "Hook & Narrative Analyser 🎣", "Content Repurposing Planner 🔄", "Script Video Generator 📝", "Audience Intelligence 🧠", "Channel Growth Roadmap 🗺️", "Thumbnail Analyser 🖼️"])
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
@@ -914,44 +740,126 @@ def score_hook(hook):
 
 
 def get_narrative_data(url_or_id):
+    """Ambil data channel dan 10 video terakhir untuk Hook & Narrative Analyser.
+
+    Perbaikan:
+    - Mendukung URL @handle, /channel/UC..., /c/name, /user/name, @handle langsung, dan Channel ID.
+    - Menampilkan error yang jelas jika channel/video tidak ditemukan.
+    - Aman jika channel tidak punya video publik.
+    """
     try:
+        if not url_or_id or not url_or_id.strip():
+            st.error("Masukkan link channel kompetitor terlebih dahulu.")
+            return None
+
+        raw_input = url_or_id.strip()
         youtube = build('youtube', 'v3', developerKey=API_KEY)
-        channel_id, handle = None, None
-        handle_match = re.search(r'youtube\.com\/@([\w.-]+)', url_or_id)
-        if handle_match: handle = handle_match.group(1)
-        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', url_or_id)
-        if channel_match: channel_id = channel_match.group(1)
-        if not channel_id and handle:
-            sr = youtube.search().list(part="snippet", q=handle, type="channel", maxResults=1).execute()
-            if sr['items']: channel_id = sr['items'][0]['snippet']['channelId']
-        if not channel_id: return None
-        ch = youtube.channels().list(part="snippet,contentDetails", id=channel_id).execute()
-        if not ch['items']: return None
-        name = ch['items'][0]['snippet']['title']
-        playlist_id = ch['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        pl = youtube.playlistItems().list(part="contentDetails", playlistId=playlist_id, maxResults=10).execute()
-        vids = youtube.videos().list(
-            part="snippet,statistics",
-            id=','.join([i['contentDetails']['videoId'] for i in pl['items']])
+        channel_id, handle_or_name = None, None
+
+        # Format: https://youtube.com/channel/UCxxxxx atau Channel ID langsung
+        channel_match = re.search(r'youtube\.com\/channel\/(UC[\w-]+)', raw_input)
+        if channel_match:
+            channel_id = channel_match.group(1)
+        elif raw_input.startswith('UC') and len(raw_input) > 20:
+            channel_id = raw_input
+
+        # Format: https://youtube.com/@handle atau @handle langsung
+        if not channel_id:
+            handle_match = re.search(r'(?:youtube\.com\/@|^@)([\w.-]+)', raw_input)
+            if handle_match:
+                handle_or_name = handle_match.group(1)
+
+        # Format lama: /c/name atau /user/name
+        if not channel_id and not handle_or_name:
+            custom_match = re.search(r'youtube\.com\/(?:c\/|user\/)([\w.-]+)', raw_input)
+            if custom_match:
+                handle_or_name = custom_match.group(1)
+
+        # Fallback: teks biasa dianggap nama channel/handle
+        if not channel_id and not handle_or_name:
+            handle_or_name = (
+                raw_input
+                .replace('https://', '')
+                .replace('http://', '')
+                .replace('www.', '')
+                .replace('youtube.com/', '')
+                .strip('/ ')
+            )
+
+        # Resolve handle/nama menjadi channel_id
+        if not channel_id and handle_or_name:
+            search_resp = youtube.search().list(
+                part="snippet",
+                q=handle_or_name,
+                type="channel",
+                maxResults=1
+            ).execute()
+            items = search_resp.get('items', [])
+            if items:
+                channel_id = items[0]['snippet']['channelId']
+
+        if not channel_id:
+            st.error("Channel tidak ditemukan. Coba gunakan format https://youtube.com/@namachannel atau Channel ID yang diawali UC.")
+            return None
+
+        # Ambil info channel dan uploads playlist
+        ch_resp = youtube.channels().list(
+            part="snippet,contentDetails",
+            id=channel_id
         ).execute()
+        ch_items = ch_resp.get('items', [])
+        if not ch_items:
+            st.error("Data channel tidak ditemukan dari YouTube API. Pastikan channel publik dan API key valid.")
+            return None
+
+        channel = ch_items[0]
+        name = channel['snippet']['title']
+        playlist_id = channel['contentDetails']['relatedPlaylists']['uploads']
+
+        # Ambil 10 video terakhir
+        pl_resp = youtube.playlistItems().list(
+            part="contentDetails",
+            playlistId=playlist_id,
+            maxResults=10
+        ).execute()
+        video_ids = [item['contentDetails']['videoId'] for item in pl_resp.get('items', [])]
+
+        if not video_ids:
+            st.error("Channel ini tidak memiliki video publik yang bisa dianalisis.")
+            return None
+
+        vids_resp = youtube.videos().list(
+            part="snippet,statistics",
+            id=','.join(video_ids)
+        ).execute()
+
         videos = []
-        for v in vids['items']:
+        for v in vids_resp.get('items', []):
             stats = v.get('statistics', {})
-            sn = v['snippet']
+            snippet = v.get('snippet', {})
             views = int(stats.get('viewCount', 0))
             likes = int(stats.get('likeCount', 0))
             comments = int(stats.get('commentCount', 0))
-            eng = ((likes + comments) / views * 100) if views > 0 else 0
+            engagement = ((likes + comments) / views * 100) if views > 0 else 0
+
             videos.append({
-                "title": sn['title'],
-                "description": sn.get('description', '')[:300],
-                "views": views, "engagement": eng,
+                "title": snippet.get('title', 'Tanpa judul'),
+                "description": snippet.get('description', '')[:300],
+                "views": views,
+                "likes": likes,
+                "comments": comments,
+                "engagement": engagement,
             })
+
+        if not videos:
+            st.error("Video publik ditemukan, tetapi statistik video tidak bisa dibaca.")
+            return None
+
         return {"name": name, "videos": videos}
+
     except Exception as e:
         st.error(f"Error get_narrative_data: {e}")
         return None
-
 
 def detect_dominant_format(titles):
     listicle = sum(1 for t in titles if t.split() and any(c.isdigit() for c in t.split()[0]))
@@ -1001,6 +909,118 @@ def generate_hooks_from_pattern(dominant, top_video_title, channel_name):
     return hooks.get(dominant, hooks["❓ Pertanyaan"])
 
 
+
+# ============================================================
+# FUNGSI GLOBAL: SEMANTIC COMMENT CLUSTERING
+# ============================================================
+@st.cache_resource(show_spinner=False)
+def load_embedding_model():
+    """Load model embedding multilingual untuk clustering komentar."""
+    if SentenceTransformer is None:
+        return None
+    return SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
+
+def semantic_comment_clustering(comments_data, max_clusters=5):
+    """
+    Kelompokkan komentar berdasarkan makna semantik, bukan sekadar keyword.
+    Fitur ini otomatis fallback ke list kosong jika dependency belum terpasang.
+    """
+    if not comments_data or len(comments_data) < 5:
+        return []
+
+    if SentenceTransformer is None or KMeans is None or silhouette_score is None:
+        st.info("Semantic clustering belum aktif. Install: pip install sentence-transformers scikit-learn")
+        return []
+
+    cleaned_items = []
+    for c in comments_data:
+        text = str(c.get("text", "")).strip()
+        if len(text) >= 8:
+            cleaned_items.append({
+                "text": text,
+                "likes": c.get("likes", 0),
+                "video": c.get("video", "")
+            })
+
+    if len(cleaned_items) < 5:
+        return []
+
+    try:
+        comments = [c["text"] for c in cleaned_items]
+        model = load_embedding_model()
+        if model is None:
+            return []
+
+        embeddings = model.encode(comments, show_progress_bar=False)
+
+        best_k = 2
+        best_score = -1
+        max_k = min(max_clusters, len(comments) - 1)
+
+        for k in range(2, max_k + 1):
+            kmeans_test = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels_test = kmeans_test.fit_predict(embeddings)
+            if len(set(labels_test)) > 1:
+                score = silhouette_score(embeddings, labels_test)
+                if score > best_score:
+                    best_score = score
+                    best_k = k
+
+        kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(embeddings)
+
+        clusters = []
+        for cluster_id in range(best_k):
+            cluster_comments = [
+                cleaned_items[i]
+                for i, label in enumerate(labels)
+                if label == cluster_id
+            ]
+            if not cluster_comments:
+                continue
+
+            cluster_comments_sorted = sorted(
+                cluster_comments,
+                key=lambda x: x.get("likes", 0),
+                reverse=True
+            )
+
+            sample_text = "\n".join([
+                f'- "{c["text"]}" (like: {c.get("likes", 0)})'
+                for c in cluster_comments_sorted[:8]
+            ])
+
+            clusters.append({
+                "cluster_id": cluster_id + 1,
+                "size": len(cluster_comments),
+                "top_comments": cluster_comments_sorted[:5],
+                "sample_text": sample_text[:1500],
+                "silhouette_score": best_score,
+            })
+
+        return sorted(clusters, key=lambda x: x["size"], reverse=True)
+
+    except Exception as e:
+        st.warning(f"Semantic clustering gagal, memakai analisis komentar biasa. Detail: {e}")
+        return []
+
+
+def build_cluster_context(semantic_clusters):
+    """Ubah hasil clustering menjadi konteks yang mudah dibaca Groq AI."""
+    if not semantic_clusters:
+        return ""
+
+    cluster_context = "Hasil semantic clustering komentar audiens:\n"
+    for cluster in semantic_clusters:
+        cluster_context += f"""
+Cluster {cluster['cluster_id']}:
+- Jumlah komentar: {cluster['size']}
+- Skor pemisahan cluster: {cluster.get('silhouette_score', 0):.3f}
+- Contoh komentar dominan:
+{cluster['sample_text']}
+"""
+    return cluster_context
 
 if mode == "Single Analysis":
     st.subheader("🔍 Analisis Video Tunggal")
@@ -1927,108 +1947,95 @@ elif mode == "Monetization Estimator 💰":
 
 elif mode == "Hook & Narrative Analyser 🎣":
     st.subheader("🎣 Hook & Narrative Analyser")
-    st.markdown("Analisis pola narasi kompetitor → generate hook → score hook kamu.")
+    st.markdown("Analisis pola narasi kompetitor → generate hook terinspirasi dari formula mereka → score hook kamu.")
+
     st.markdown("---")
+    st.markdown("### 📌 Step 1 — Analisis Pola Narasi Kompetitor")
+    ch_input = st.text_input("Paste Link Channel Kompetitor", placeholder="https://www.youtube.com/@channelname")
 
-    st.markdown("### 📌 Step 1 — Input Channel Kompetitor")
-    ch_input = st.text_input(
-        "Paste Link Channel Kompetitor",
-        placeholder="https://www.youtube.com/@channelname",
-        key="hook_ch_input"
-    )
-
-    if st.button("🔍 Analisis Kompetitor & Generate Hook", use_container_width=True, key="hook_btn"):
-        if not ch_input.strip():
-            st.warning("Masukkan link channel kompetitor!")
-        else:
+    if st.button("🔍 Analisis Kompetitor & Generate Hook", use_container_width=True):
+        if ch_input:
             with st.spinner("Menganalisis pola narasi kompetitor..."):
                 ch_data = get_narrative_data(ch_input)
-
             if ch_data:
-                titles_list = [v["title"] for v in ch_data["videos"]]
-                formats_result, dominant_result = detect_dominant_format(titles_list)
-                top_videos_result = sorted(ch_data["videos"], key=lambda x: x["engagement"], reverse=True)
-                top_title = top_videos_result[0]["title"] if top_videos_result else ""
-
-                generated_hooks_result = []
+                titles = [v["title"] for v in ch_data["videos"]]
+                formats, dominant = detect_dominant_format(titles)
+                top_videos = sorted(ch_data["videos"], key=lambda x: x["engagement"], reverse=True)
+                top_video_title = top_videos[0]["title"] if top_videos else ""
                 if GROQ_API_KEY:
-                    with st.spinner("Groq AI membuat hook dari formula kompetitor..."):
-                        ch_nm = ch_data["name"]
-                        titles_preview = " | ".join(titles_list[:6])
-                        gp = (
+                    with st.spinner("Groq AI membuat hook terinspirasi dari kompetitor..."):
+                        ch_name_tmp = ch_data["name"]
+                        titles_tmp = ", ".join(titles[:8])
+                        hook_prompt = (
                             "Kamu adalah YouTube scriptwriter profesional. "
-                            "Buat 2 hook pembuka video terinspirasi dari pola narasi channel kompetitor berikut. "
-                            f"Channel: {ch_nm}. "
-                            f"Format dominan: {dominant_result}. "
-                            f"Video terbaik: {top_title}. "
-                            f"Judul terbaru: {titles_preview}. "
-                            "Buat 2 hook masing-masing 20-35 kata, mengandung curiosity gap, "
-                            "dipisahkan dengan satu baris kosong, tanpa nomor atau label."
+                            "Buat 2 hook pembuka video terinspirasi dari kompetitor. "
+                            f"Channel: {ch_name_tmp}. Format: {dominant}. "
+                            f"Video terbaik: {top_video_title}. "
+                            f"Judul terbaru: {titles_tmp}. "
+                            "Buat 2 hook 20-35 kata dengan curiosity gap, dipisah baris kosong."
                         )
-                        gr, ge = call_groq(gp, max_tokens=300)
-                    if gr:
-                        raw_hooks = [h.strip() for h in gr.strip().split("\n\n") if h.strip()]
-                        if len(raw_hooks) < 2:
-                            raw_hooks = [h.strip() for h in gr.strip().split("\n") if h.strip()]
-                        generated_hooks_result = raw_hooks[:2]
+                        hooks_result, err = call_groq(hook_prompt, max_tokens=300)
+                    if hooks_result:
+                        generated_hooks = [h.strip() for h in hooks_result.strip().split("\n\n") if h.strip()][:2]
+                        if len(generated_hooks) < 2:
+                            generated_hooks = [h.strip() for h in hooks_result.strip().split("\n") if h.strip()][:2]
                     else:
-                        generated_hooks_result = generate_hooks_from_pattern(dominant_result, top_title, ch_nm)
+                        generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data["name"])
                 else:
-                    generated_hooks_result = generate_hooks_from_pattern(dominant_result, top_title, ch_data["name"])
-
-                st.session_state["hn_ch_data"] = ch_data
-                st.session_state["hn_titles"] = titles_list
-                st.session_state["hn_formats"] = formats_result
-                st.session_state["hn_dominant"] = dominant_result
-                st.session_state["hn_top_videos"] = top_videos_result
-                st.session_state["hn_ch_name"] = ch_data["name"]
-                st.session_state["hn_hooks"] = generated_hooks_result
+                    generated_hooks = generate_hooks_from_pattern(dominant, top_video_title, ch_data["name"])
+                st.session_state["narrative_data"] = ch_data
+                st.session_state["generated_hooks"] = generated_hooks
+                st.session_state["dominant_format"] = dominant
+                st.session_state["formats"] = formats
+                st.session_state["top_videos"] = top_videos
+                st.session_state["ch_name"] = ch_data["name"]
+                st.session_state["titles"] = titles
                 st.rerun()
             else:
-                st.error("Channel tidak ditemukan. Periksa link dan coba lagi.")
+                st.error("Gagal menganalisis channel. Pastikan link channel benar, channel memiliki video publik, YouTube API key aktif, dan quota YouTube API masih tersedia.")
+        else:
+            st.warning("Masukkan link channel kompetitor!")
 
-    if "hn_ch_data" in st.session_state:
-        hn_ch_name = st.session_state["hn_ch_name"]
-        hn_dominant = st.session_state["hn_dominant"]
-        hn_formats = st.session_state["hn_formats"]
-        hn_top_videos = st.session_state["hn_top_videos"]
-        hn_titles = st.session_state["hn_titles"]
-        hn_hooks = st.session_state["hn_hooks"]
+    if "narrative_data" in st.session_state:
+        ch_name = st.session_state["ch_name"]
+        dominant = st.session_state["dominant_format"]
+        formats = st.session_state["formats"]
+        top_videos = st.session_state["top_videos"]
+        titles = st.session_state["titles"]
+        generated_hooks = st.session_state["generated_hooks"]
 
-        st.success(f"✅ Berhasil menganalisis **{hn_ch_name}**")
+        st.success(f"Berhasil menganalisis **{ch_name}**")
         st.divider()
 
-        # --- STEP 2: HASIL ANALISIS NARASI ---
         st.markdown("### 📖 Step 2 — Hasil Analisis Pola Narasi")
         col_fmt, col_kw = st.columns(2)
-
         with col_fmt:
             st.markdown("#### 🎬 Format Narasi")
-            for fmt, count in sorted(hn_formats.items(), key=lambda x: x[1], reverse=True):
-                pct = count / len(hn_titles) * 100 if hn_titles else 0
+            for fmt, count in sorted(formats.items(), key=lambda x: x[1], reverse=True):
+                pct = count / len(titles) * 100 if titles else 0
                 if count > 0:
-                    bar = "█" * count + "░" * (len(hn_titles) - count)
+                    bar = "█" * count + "░" * (len(titles) - count)
                     st.markdown(f"**{fmt}** `{bar}` {count}x ({pct:.0f}%)")
-            st.info(f"🏆 **Format dominan: {hn_dominant}**")
+            st.info(f"🏆 **Format dominan: {dominant}**")
 
         with col_kw:
             st.markdown("#### 🔑 Kata Kunci Dominan")
             from collections import Counter
-            sw = {"the","and","for","with","this","that","from","are","was","how","why",
-                  "what","when","who","you","your","have","yang","dan","ini","itu",
-                  "untuk","dengan","dari","akan","sudah","tidak","bisa","ada"}
-            all_kw = []
-            for t in hn_titles:
-                all_kw.extend([w.lower().strip("?!.,") for w in t.split()
-                                if len(w) > 3 and w.lower() not in sw])
-            top_kw = Counter(all_kw).most_common(8)
-            for w, c in top_kw:
+            stopwords_set = {"the","and","for","with","this","that","from","are","was","how",
+                             "why","what","when","who","you","your","have","yang","dan","ini",
+                             "itu","untuk","dengan","dari","akan","sudah","tidak","bisa","ada"}
+            all_words_n = []
+            for t in titles:
+                all_words_n.extend([w.lower().strip("?!.,") for w in t.split()
+                                    if len(w) > 3 and w.lower() not in stopwords_set])
+            top_words = Counter(all_words_n).most_common(8)
+            for w, c in top_words:
                 st.markdown(f"🔹 `{w}` — {c}x")
 
         st.divider()
-        st.markdown("#### 🏆 Video Terbaik Kompetitor (Referensi Formula)")
-        for i, v in enumerate(hn_top_videos[:3], 1):
-            with st.expander(f"#{i} — {v['title']} ({v['engagement']:.2f}% engagement)", expanded=(i == 1)):
+        st.markdown("#### 🏆 Video Terbaik Kompetitor")
+        for i, v in enumerate(top_videos[:3], 1):
+            with st.expander(f"#{i} — {v['title']} ({v['engagement']:.2f}% engagement)", expanded=(i==1)):
                 notes = []
                 if "?" in v["title"]: notes.append("❓ Pertanyaan")
                 if any(c.isdigit() for c in v["title"]): notes.append("🔢 Angka")
@@ -2036,89 +2043,71 @@ elif mode == "Hook & Narrative Analyser 🎣":
                 tlen = len(v["title"])
                 notes.append("✂️ Pendek" if tlen < 40 else ("📝 Panjang" if tlen > 60 else "⚖️ Seimbang"))
                 st.markdown("**Struktur judul:** " + " | ".join(notes))
-                if v.get("description"):
+                if v["description"]:
                     st.caption(f"Deskripsi: {v['description'][:200]}...")
 
         st.divider()
-
-        # --- STEP 3: HOOK GENERATED ---
-        st.markdown("### 🎣 Step 3 — Hook Terinspirasi dari Kompetitor")
-        st.caption(f"Hook dibuat menggunakan formula **{hn_dominant}** dari {hn_ch_name}.")
-        for i, hook in enumerate(hn_hooks):
-            col_h, col_b = st.columns([5, 1])
-            with col_h:
+        st.markdown("### 🎣 Step 3 — Hook Terinspirasi dari Formula Kompetitor")
+        for i, hook in enumerate(generated_hooks):
+            col_hook, col_btn = st.columns([5, 1])
+            with col_hook:
                 st.info(f"**Hook {i+1}:**\n\n*\"{hook}\"*")
-            with col_b:
-                if st.button("Pakai", key=f"hn_use_{i}"):
-                    st.session_state["hn_selected_hook"] = hook
+            with col_btn:
+                if st.button("Pakai ini", key=f"use_hook_{i}"):
+                    st.session_state["selected_hook"] = hook
                     st.rerun()
 
         st.divider()
-
-        # --- STEP 4: HOOK SCORER ---
         st.markdown("### 🎯 Step 4 — Score Hook Kamu")
-        default_h = st.session_state.get("hn_selected_hook", "")
-        hook_input_val = st.text_area(
-            "Tulis atau edit hook di sini",
-            value=default_h,
-            placeholder="Tulis hook pembuka video kamu...",
+        default_hook = st.session_state.get("selected_hook", "")
+        hook_input = st.text_area(
+            "Tulis atau Edit Hook di Sini",
+            value=default_hook,
+            placeholder="Tulis hook pembuka video kamu di sini...",
             height=120,
-            key="hn_hook_textarea"
+            key="final_hook_input"
         )
 
-        if st.button("🏆 Score Hook Ini", use_container_width=True, key="hn_score_btn"):
-            if not hook_input_val.strip():
-                st.warning("Tulis atau pilih hook terlebih dahulu!")
-            else:
-                hn_score, hn_feedback, hn_improvements = score_hook(hook_input_val)
-
-                if hn_score >= 85:
-                    hn_grade, hn_color, hn_msg = "S-Tier 🏆", "green", "Hook luar biasa! Langsung rekam."
-                elif hn_score >= 70:
-                    hn_grade, hn_color, hn_msg = "A-Tier 🔥", "blue", "Hook sangat baik."
-                elif hn_score >= 50:
-                    hn_grade, hn_color, hn_msg = "B-Tier ✅", "orange", "Hook cukup, bisa diperkuat."
-                else:
-                    hn_grade, hn_color, hn_msg = "C-Tier ⚠️", "red", "Hook perlu direvisi."
+        if st.button("🏆 Score Hook Ini", use_container_width=True):
+            if hook_input.strip():
+                score, feedback, improvements = score_hook(hook_input)
+                if score >= 85: grade, grade_color, grade_msg = "S-Tier 🏆", "green", "Hook luar biasa! Langsung rekam."
+                elif score >= 70: grade, grade_color, grade_msg = "A-Tier 🔥", "blue", "Hook sangat baik."
+                elif score >= 50: grade, grade_color, grade_msg = "B-Tier ✅", "orange", "Hook cukup, bisa diperkuat."
+                else: grade, grade_color, grade_msg = "C-Tier ⚠️", "red", "Hook perlu direvisi."
 
                 col_s, col_g = st.columns([1, 2])
                 with col_s:
-                    st.metric("Hook Score", f"{hn_score}/100")
+                    st.metric("Hook Score", f"{score}/100")
                 with col_g:
-                    st.markdown(f"### :{hn_color}[{hn_grade}]")
-                    st.caption(hn_msg)
+                    st.markdown(f"### :{grade_color}[{grade}]")
+                    st.caption(grade_msg)
 
                 st.divider()
-                st.markdown("#### 📋 Detail Penilaian")
-                for icon, msg in hn_feedback:
-                    if icon == "✅":
-                        st.success(f"{icon} {msg}")
-                    elif icon == "❌":
-                        st.error(f"{icon} {msg}")
-                    elif icon == "⚠️":
-                        st.warning(f"{icon} {msg}")
-                    else:
-                        st.info(f"{icon} {msg}")
+                for icon, msg in feedback:
+                    if icon == "✅": st.success(f"{icon} {msg}")
+                    elif icon == "❌": st.error(f"{icon} {msg}")
+                    elif icon == "⚠️": st.warning(f"{icon} {msg}")
+                    else: st.info(f"{icon} {msg}")
 
-                if hn_improvements:
+                if improvements:
                     st.divider()
                     st.markdown("#### 🚀 Rekomendasi Perbaikan")
-                    for idx_i, imp in enumerate(hn_improvements, 1):
-                        st.info(f"**{idx_i}.** {imp}")
+                    for idx2, imp in enumerate(improvements, 1):
+                        st.info(f"**{idx2}.** {imp}")
 
                 st.divider()
-                st.markdown("#### 📊 Posisi Hook Kamu vs Kompetitor")
-                top_comp = hn_top_videos[0]
-                comp_sc, _, _ = score_hook(top_comp["title"])
+                top_v = top_videos[0]
+                comp_score, _, _ = score_hook(top_v["title"])
                 c1, c2 = st.columns(2)
-                c1.metric("Score Hook Kamu", f"{hn_score}/100")
-                c2.metric(f"Score Terbaik {hn_ch_name}", f"{comp_sc}/100",
-                          delta=f"{hn_score - comp_sc:+d}")
-                if hn_score >= comp_sc:
-                    st.success(f"🏆 Hook kamu lebih kuat dari formula terbaik {hn_ch_name}!")
+                c1.metric("Score Hook Kamu", f"{score}/100")
+                c2.metric(f"Score Terbaik {ch_name}", f"{comp_score}/100", delta=f"{score - comp_score:+d}")
+                if score >= comp_score:
+                    st.success(f"🏆 Hook kamu lebih kuat dari formula terbaik {ch_name}!")
                 else:
-                    st.warning(f"⚠️ Masih {comp_sc - hn_score} poin di bawah {hn_ch_name}. Terapkan rekomendasi di atas.")
-
+                    st.warning(f"⚠️ Masih {comp_score - score} poin di bawah {ch_name}. Terapkan rekomendasi di atas.")
+            else:
+                st.warning("Tulis atau pilih hook terlebih dahulu!")
 
 elif mode == "Content Repurposing Planner 🔄":
     st.subheader("🔄 Content Repurposing Planner")
@@ -2740,6 +2729,25 @@ Tags yang sering dipakai: {', '.join(list(set(all_tags))[:20])}
         niche_context = f"Niche/Topik: {niche_manual}" if has_niche else ""
         combined_context = f"{channel_context}\n{niche_context}".strip()
 
+        semantic_clusters = []
+        cluster_context = ""
+        if comments_data:
+            with st.spinner("Mengelompokkan komentar berdasarkan makna semantik..."):
+                semantic_clusters = semantic_comment_clustering(comments_data)
+                cluster_context = build_cluster_context(semantic_clusters)
+
+            if semantic_clusters:
+                st.subheader("🧩 Semantic Comment Clusters")
+                st.caption("Komentar dikelompokkan berdasarkan makna, bukan sekadar keyword. Ini membantu AI menemukan pain point yang berulang.")
+
+                for cluster in semantic_clusters:
+                    with st.expander(f"Cluster {cluster['cluster_id']} — {cluster['size']} komentar terkait", expanded=False):
+                        for c in cluster["top_comments"]:
+                            st.markdown(f"- 👍 **{c.get('likes', 0)}** — {c.get('text', '')}")
+                            if c.get("video"):
+                                st.caption(f"Dari video: {c['video']}")
+                st.divider()
+
         st.success("✅ Data berhasil dikumpulkan! Groq AI sedang menganalisis...")
         st.divider()
 
@@ -2815,19 +2823,24 @@ Analisis pain point, pertanyaan, dan keinginan audiens berdasarkan data berikut.
 
 {comments_sample}
 
+{cluster_context}
+
 Identifikasi dan kategorikan:
 
-## 🔴 Pain Points Utama (masalah yang paling sering dihadapi audiens)
-List 5 pain point dengan penjelasan singkat + peluang konten untuk menjawabnya.
+## 🔴 Pain Points Utama
+List 5 pain point. Jika semantic cluster tersedia, prioritaskan cluster komentar terbesar dan jelaskan peluang kontennya.
 
-## ❓ Pertanyaan yang Sering Ditanyakan (tapi belum terjawab dengan baik)
-List 5 pertanyaan yang sering muncul di niche ini + judul konten yang bisa menjawabnya.
+## ❓ Pertanyaan yang Sering Ditanyakan
+List 5 pertanyaan yang muncul berulang dari komentar, judul video, dan niche ini + judul konten yang bisa menjawabnya.
 
-## 💡 Keinginan Tersembunyi Audiens (yang tidak diucapkan tapi tersirat)
-List 3 keinginan tersembunyi + cara mengeksploitasinya dalam konten.
+## 💡 Keinginan Tersembunyi Audiens
+List 3 keinginan tersembunyi berdasarkan pola komentar, emosi audiens, dan topik kompetitor.
+
+## 🧩 Ringkasan Cluster Audiens
+Jika ada data cluster, jelaskan 3 cluster paling penting dan apa arti strategisnya untuk creator.
 
 ## 🎯 Rekomendasi Konten Prioritas
-3 ide konten yang PALING MENDESAK dibuat berdasarkan pain point di atas.
+3 ide konten paling mendesak dibuat berdasarkan cluster komentar terbesar atau pain point paling kuat.
 
 Tulis dalam Bahasa Indonesia, spesifik dan actionable."""
 
@@ -2860,6 +2873,8 @@ Tulis dalam Bahasa Indonesia, spesifik dan actionable."""
 Analisis sentimen komentar berikut dari channel {channel_name}:
 
 {all_comments_text}
+
+{cluster_context}
 
 Berikan analisis lengkap:
 
@@ -2907,6 +2922,9 @@ Tulis dalam Bahasa Indonesia, jelas dan actionable."""
 
         with st.spinner("Groq AI membuat action plan..."):
             action_prompt = f"""Berdasarkan analisis Audience Intelligence untuk {channel_context or niche_context},
+serta semantic cluster berikut jika tersedia:
+{cluster_context}
+
 buat Action Plan konten yang sangat konkret dan actionable untuk 30 hari ke depan.
 
 Format:
