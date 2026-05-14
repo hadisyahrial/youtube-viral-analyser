@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import re
 import time
 import bcrypt
+import httplib2
 
 # Optional dependency untuk Audience Intelligence semantic clustering.
 # Install jika ingin mengaktifkan fitur ini:
@@ -41,10 +42,16 @@ except Exception:
 
 @st.cache_resource(show_spinner=False)
 def get_youtube_service():
-    """Build YouTube API client sekali per session/resource cache."""
+    """Build YouTube API client sekali per session/resource cache.
+
+    Bug fix: versi sebelumnya tanpa sengaja memanggil get_youtube_service()
+    di dalam dirinya sendiri, sehingga bisa membuat proses analisis terlihat
+    muter terus. Di sini client YouTube dibuild sungguhan dan diberi timeout.
+    """
     if not API_KEY or API_KEY == "MASUKKAN_API_KEY_ANDA_DISINI":
         raise ValueError("YOUTUBE_API_KEY belum diisi di Streamlit Secrets.")
-    return get_youtube_service()
+    http = httplib2.Http(timeout=12)
+    return build('youtube', 'v3', developerKey=API_KEY, cache_discovery=False, http=http)
 
 
 def safe_int(value, default=0):
@@ -1317,116 +1324,131 @@ Cluster {cluster['cluster_id']}:
 if mode == "Single Analysis":
     st.subheader("🔍 Analisis Video Tunggal")
     video_input = st.text_input("Paste Link YouTube atau ID Video", placeholder="https://www.youtube.com/watch?v=...")
+    run_real_issue = st.checkbox(
+        "Aktifkan Analisis Isu Real dari web",
+        value=False,
+        help="Matikan default agar analisis utama tidak lama menunggu scraping web. Aktifkan hanya jika butuh konteks berita/tren."
+    )
 
     if st.button("Analisis Sekarang"):
-        if video_input:
-            with st.spinner('Menganalisis...'):
+        if not video_input:
+            st.warning("Masukkan link atau ID video!")
+        else:
+            with st.spinner('Mengambil data video dari YouTube...'):
                 result = analyze_virality(video_input)
-                if result:
-                    st.success("Analisis Selesai!")
 
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        st.header(f"🎬 {result['title']}")
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("Views", f"{result['views']:,}")
-                        m2.metric("Likes", f"{result['likes']:,}")
-                        m3.metric("Comments", f"{result['comments']:,}")
-                        st.markdown(f"### Grade: :{result['color']}[{result['grade']}] | Engagement: {result['engagement']:.2f}%")
+            if not result:
+                st.error("Video tidak ditemukan atau YouTube API gagal merespons. Pastikan link/ID benar dan API key aktif.")
+            else:
+                st.success("Analisis Selesai!")
 
-                        # Tanggal publish
-                        if result['published_at'] != 'N/A':
-                            from datetime import datetime, timezone
-                            try:
-                                pub_dt = datetime.strptime(result['published_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                                now = datetime.now(timezone.utc)
-                                delta = now - pub_dt
-                                days = delta.days
-                                if days == 0:
-                                    umur = "Hari ini"
-                                elif days < 7:
-                                    umur = f"{days} hari yang lalu"
-                                elif days < 30:
-                                    umur = f"{days // 7} minggu yang lalu"
-                                elif days < 365:
-                                    umur = f"{days // 30} bulan yang lalu"
-                                else:
-                                    umur = f"{days // 365} tahun yang lalu"
-                                pub_str = pub_dt.strftime("%d %B %Y, %H:%M UTC")
-                                st.caption(f"📅 **Dipublish:** {pub_str} &nbsp;|&nbsp; ⏱️ {umur}")
-                            except Exception:
-                                st.caption(f"📅 **Dipublish:** {result['published_at']}")
-                    with col2:
-                        st.subheader("🏷️ Tags")
-                        if result['tags']:
-                            for tag in result['tags']: st.markdown(f"🔹 `{tag}`")
-                        else: st.info("Tidak ada tags.")
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.header(f"🎬 {result['title']}")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Views", f"{result['views']:,}")
+                    m2.metric("Likes", f"{result['likes']:,}")
+                    m3.metric("Comments", f"{result['comments']:,}")
+                    st.markdown(f"### Grade: :{result['color']}[{result['grade']}] | Engagement: {result['engagement']:.2f}%")
 
-                    st.divider()
+                    if result['published_at'] != 'N/A':
+                        from datetime import datetime, timezone
+                        try:
+                            pub_dt = datetime.strptime(result['published_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                            now = datetime.now(timezone.utc)
+                            delta = now - pub_dt
+                            days = delta.days
+                            if days == 0:
+                                umur = "Hari ini"
+                            elif days < 7:
+                                umur = f"{days} hari yang lalu"
+                            elif days < 30:
+                                umur = f"{days // 7} minggu yang lalu"
+                            elif days < 365:
+                                umur = f"{days // 30} bulan yang lalu"
+                            else:
+                                umur = f"{days // 365} tahun yang lalu"
+                            pub_str = pub_dt.strftime("%d %B %Y, %H:%M UTC")
+                            st.caption(f"📅 **Dipublish:** {pub_str} &nbsp;|&nbsp; ⏱️ {umur}")
+                        except Exception:
+                            st.caption(f"📅 **Dipublish:** {result['published_at']}")
+                with col2:
+                    st.subheader("🏷️ Tags")
+                    if result['tags']:
+                        for tag in result['tags']:
+                            st.markdown(f"🔹 `{tag}`")
+                    else:
+                        st.info("Tidak ada tags.")
 
-                    # --- ANALISIS MENDALAM ---
-                    st.subheader("🧠 Analisis Mendalam — Diagnosis & Rekomendasi")
-                    analysis = generate_analysis(result)
+                st.divider()
 
-                    st.markdown("### 🔍 Diagnosis Masalah")
-                    for point in analysis['diagnosis']:
-                        st.markdown(f"- {point}")
+                st.subheader("🧠 Analisis Mendalam — Diagnosis & Rekomendasi")
+                analysis = generate_analysis(result)
 
-                    st.markdown("### ⚠️ Isu Utama yang Ditemukan")
+                st.markdown("### 🔍 Diagnosis Masalah")
+                for point in analysis['diagnosis']:
+                    st.markdown(f"- {point}")
+
+                st.markdown("### ⚠️ Isu Utama yang Ditemukan")
+                if analysis['issues']:
                     for i, issue in enumerate(analysis['issues'], 1):
                         st.markdown(f"**{i}.** {issue}")
+                else:
+                    st.success("Tidak ada isu besar yang terdeteksi dari metadata video.")
 
-                    st.markdown("### 🚀 Rekomendasi Perbaikan")
+                st.markdown("### 🚀 Rekomendasi Perbaikan")
+                if analysis['recommendations']:
                     for rec in analysis['recommendations']:
                         st.info(rec)
+                else:
+                    st.success("Metadata dasar video terlihat cukup baik.")
 
-                    st.markdown("### 💡 Strategi Jangka Panjang")
-                    for tip in analysis['long_term']:
-                        st.success(tip)
+                st.markdown("### 💡 Strategi Jangka Panjang")
+                for tip in analysis['long_term']:
+                    st.success(tip)
 
-                    st.divider()
+                st.divider()
 
-                    # --- GENERATOR KONTEN ---
-                    st.subheader("✍️ Generator Konten — Judul, Hook & Narasi")
-                    st.caption("Hasil generator bersifat template — sesuaikan dengan gaya dan niche kontenmu.")
+                st.subheader("✍️ Generator Konten — Judul, Hook & Narasi")
+                st.caption("Jika Groq API aktif, output dibuat oleh AI. Jika tidak, aplikasi memakai fallback lokal.")
 
-                    tab1, tab2, tab3 = st.tabs(["📝 Generator Judul", "🎣 Generator Hook", "🎬 Generator Narasi"])
+                tab1, tab2, tab3 = st.tabs(["📝 Generator Judul", "🎣 Generator Hook", "🎬 Generator Narasi"])
 
-                    with tab1:
-                        st.markdown("#### 📝 5 Variasi Judul yang Lebih Menarik")
-                        st.markdown(f"Berdasarkan judul asli: *\"{result['title']}\"*")
+                with tab1:
+                    st.markdown("#### 📝 5 Variasi Judul yang Lebih Menarik")
+                    st.markdown(f"Berdasarkan judul asli: *\"{result['title']}\"*")
+                    with st.spinner("Membuat variasi judul..."):
                         titles = generate_titles(result['title'], result['tags'])
-                        for i, t in enumerate(titles, 1):
-                            st.markdown(f"**{i}.** {t}")
-                            st.code(t, language=None)
+                    for i, t in enumerate(titles, 1):
+                        st.markdown(f"**{i}.** {t}")
+                        st.code(t, language=None)
 
-                    with tab2:
-                        st.markdown("#### 🎣 4 Variasi Hook Pembuka Video")
-                        st.markdown("Hook adalah 30 detik pertama yang menentukan apakah penonton lanjut menonton atau tidak.")
+                with tab2:
+                    st.markdown("#### 🎣 4 Variasi Hook Pembuka Video")
+                    st.markdown("Hook adalah 30 detik pertama yang menentukan apakah penonton lanjut menonton atau tidak.")
+                    with st.spinner("Membuat hook..."):
                         hooks = generate_hooks(result['title'], result['grade'])
-                        for i, h in enumerate(hooks, 1):
-                            st.markdown(f"**Hook {i}:**")
-                            st.info(h)
+                    for i, h in enumerate(hooks, 1):
+                        st.markdown(f"**Hook {i}:**")
+                        st.info(h)
 
-                    with tab3:
-                        st.markdown("#### 🎬 Struktur Narasi Video yang Disarankan")
+                with tab3:
+                    st.markdown("#### 🎬 Struktur Narasi Video yang Disarankan")
+                    with st.spinner("Membuat struktur narasi..."):
                         narasi = generate_narasi(result['title'], result['tags'], result['grade'], result['engagement'])
-                        st.markdown(narasi)
+                    st.markdown(narasi)
 
+                if run_real_issue:
                     st.divider()
-
-                    # --- ANALISIS ISU REAL ---
                     st.subheader("🌐 Analisis Isu Real — Apa yang Sedang Terjadi?")
-                    st.caption("Mencari konteks berita dan tren terkait topik video dari web...")
+                    st.caption("Fitur ini memakai scraping web dan bisa lebih lambat dari analisis utama.")
 
                     topic, _ = extract_topic(result['title'], result['tags'])
 
                     with st.spinner(f'Mencari isu terkait "{topic}" di web...'):
                         raw_results, debug_log = scrape_real_issues(topic, result['tags'])
-                        time.sleep(1)
                         isu_data = analyze_real_issues(topic, result['tags'], result['title'], raw_results)
 
-                    # Debug status scraping (bisa diexpand)
                     with st.expander("🔧 Status Scraping (klik untuk lihat detail)", expanded=False):
                         if debug_log:
                             for log in debug_log:
@@ -1435,12 +1457,10 @@ if mode == "Single Analysis":
                         else:
                             st.caption("Tidak ada log tersedia.")
 
-                    # Konteks
                     if isu_data['konteks']:
                         for k in isu_data['konteks']:
                             st.markdown(k)
 
-                    # Isu yang ditemukan
                     st.markdown("#### 🔎 Isu & Kondisi Terkini")
                     if isu_data['isu']:
                         for isu in isu_data['isu']:
@@ -1448,13 +1468,11 @@ if mode == "Single Analysis":
                     else:
                         st.info("Tidak ada isu spesifik yang terdeteksi untuk topik ini.")
 
-                    # Peluang konten
                     st.markdown("#### 🚀 Peluang Konten Berdasarkan Isu")
                     if isu_data['peluang']:
-                        for p in isu_data['peluang']:
-                            st.success(p)
+                        for p2 in isu_data['peluang']:
+                            st.success(p2)
 
-                    # Berita/artikel terkait
                     if isu_data['berita']:
                         st.markdown("#### 📰 Artikel & Berita Terkait yang Ditemukan")
                         for i, berita in enumerate(isu_data['berita'], 1):
@@ -1462,9 +1480,6 @@ if mode == "Single Analysis":
                             st.markdown(f"**{i}.** {berita['judul']} *(via {berita['sumber']})*{deskripsi}")
 
                     st.caption("⚠️ Hasil scraping bersifat dinamis dan bergantung pada koneksi internet serta ketersediaan sumber web.")
-
-                else: st.error("Video tidak ditemukan. Pastikan link/ID benar.")
-        else: st.warning("Masukkan link atau ID video!")
 
 elif mode == "Video Battle ⚔️":
     st.subheader("⚔️ Video Battle: Siapa yang Lebih Viral?")
