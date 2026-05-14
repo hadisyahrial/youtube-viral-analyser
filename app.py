@@ -30,6 +30,60 @@ try:
 except Exception:
     GROQ_API_KEY = "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"
 
+# ============================================================
+# STABILISASI, CACHING & SAFE HELPERS
+# ============================================================
+# Versi ini tetap single-file, tetapi bagian API dibuat lebih stabil:
+# - YouTube service dicache agar tidak build ulang setiap klik
+# - fungsi berat diberi cache_data TTL
+# - parsing angka dan list dibuat aman
+# - reset membersihkan cache data + resource
+
+@st.cache_resource(show_spinner=False)
+def get_youtube_service():
+    """Build YouTube API client sekali per session/resource cache."""
+    if not API_KEY or API_KEY == "MASUKKAN_API_KEY_ANDA_DISINI":
+        raise ValueError("YOUTUBE_API_KEY belum diisi di Streamlit Secrets.")
+    return get_youtube_service()
+
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def safe_list(value):
+    return value if isinstance(value, list) else []
+
+
+def api_error_message(context, err):
+    return f"{context}: {err}"
+
+
+def clean_ai_lines(text_result, max_items=None):
+    """Bersihkan output AI agar tidak membawa nomor/bullet/template kosong."""
+    if not text_result:
+        return []
+    lines = []
+    for raw in str(text_result).splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        line = re.sub(r"^\s*[\-\*\•]\s*", "", line)
+        line = re.sub(r"^\s*\d+[\.\)]\s*", "", line)
+        line = line.strip().strip('"').strip("'").strip()
+        if line:
+            lines.append(line)
+    return lines[:max_items] if max_items else lines
+
+
+def ensure_non_empty_list(items, fallback):
+    items = [x for x in safe_list(items) if x]
+    return items if items else fallback
+
+
 def call_groq(prompt, max_tokens=1500):
     """Panggil Groq API untuk generate teks"""
     if not GROQ_API_KEY:
@@ -67,28 +121,32 @@ def extract_video_id(url_or_id):
         st.error(f"Error saat membaca link: {e}")
     return url_or_id
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def analyze_virality(video_id):
+    """Analisis satu video YouTube dengan cache agar quota lebih hemat."""
     try:
         clean_id = extract_video_id(video_id)
         if not clean_id:
             return None
 
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
-        request = youtube.videos().list(part="snippet,statistics", id=clean_id)
-        response = request.execute()
+        youtube = get_youtube_service()
+        response = youtube.videos().list(part="snippet,statistics", id=clean_id).execute()
 
-        if not response['items']:
+        items = response.get('items', [])
+        if not items:
             return None
 
-        data = response['items'][0]
-        title = data['snippet']['title']
-        description = data['snippet'].get('description', '')
-        tags = data['snippet'].get('tags', [])
-        published_at = data['snippet'].get('publishedAt', 'N/A')
+        data = items[0]
+        snippet = data.get('snippet', {})
         stats = data.get('statistics', {})
-        views = int(stats.get('viewCount', 0))
-        likes = int(stats.get('likeCount', 0))
-        comments = int(stats.get('commentCount', 0))
+
+        title = snippet.get('title', 'Tanpa Judul')
+        description = snippet.get('description', '')
+        tags = safe_list(snippet.get('tags', []))
+        published_at = snippet.get('publishedAt', 'N/A')
+        views = safe_int(stats.get('viewCount', 0))
+        likes = safe_int(stats.get('likeCount', 0))
+        comments = safe_int(stats.get('commentCount', 0))
 
         engagement_rate = ((likes + comments) / views) * 100 if views > 0 else 0
 
@@ -110,7 +168,7 @@ def analyze_virality(video_id):
             "published_at": published_at,
         }
     except Exception as e:
-        st.error(f"Terjadi kesalahan teknis: {e}")
+        st.error(api_error_message("Terjadi kesalahan teknis saat menganalisis video", e))
         return None
 
 def generate_analysis(result):
@@ -485,6 +543,7 @@ def generate_battle_strategy(winner, loser, label_winner, label_loser):
 
     return strategies, tips
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def scrape_real_issues(topic, tags):
     """Scrape berita dan tren terkait topik video dari berbagai sumber"""
     session = requests.Session()
@@ -727,6 +786,8 @@ mode = st.sidebar.selectbox("Pilih Mode Analisis", ["Single Analysis", "Video Ba
 st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
     st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state.clear()
     st.rerun()
 
 # ============================================================
@@ -892,6 +953,7 @@ Kalau akhir-akhir ini kamu gampang terdistraksi atau susah fokus, mungkin masala
 """
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_narrative_data(url_or_id):
     """Ambil data channel dan 10 video terakhir untuk Hook & Narrative Analyser.
 
@@ -906,7 +968,7 @@ def get_narrative_data(url_or_id):
             return None
 
         raw_input = url_or_id.strip()
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
+        youtube = get_youtube_service()
         channel_id, handle_or_name = None, None
 
         # Format: https://youtube.com/channel/UCxxxxx atau Channel ID langsung
@@ -1509,7 +1571,7 @@ elif mode == "Competitor Tracker 🕵️":
     def analyze_channel(url_or_id):
         """Ambil data channel dan 10 video terakhir dari YouTube API"""
         try:
-            youtube = build('youtube', 'v3', developerKey=API_KEY)
+            youtube = get_youtube_service()
             channel_id, handle = extract_channel_id(url_or_id)
 
             # Cari channel berdasarkan handle jika tidak ada ID
@@ -1944,7 +2006,7 @@ elif mode == "Monetization Estimator 💰":
 
                 def get_channel_monetization_data(url_or_id):
                     try:
-                        youtube = build('youtube', 'v3', developerKey=API_KEY)
+                        youtube = get_youtube_service()
                         channel_id, handle = extract_channel_id_simple(url_or_id)
 
                         if not channel_id and handle:
@@ -2933,7 +2995,7 @@ elif mode == "Audience Intelligence 🧠":
         if has_channel:
             with st.spinner("Mengambil data channel..."):
                 try:
-                    youtube = build('youtube', 'v3', developerKey=API_KEY)
+                    youtube = get_youtube_service()
 
                     # Resolve channel ID
                     handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_ai)
@@ -3251,7 +3313,7 @@ elif mode == "Channel Growth Roadmap 🗺️":
 
         with st.spinner("Mengambil data channel..."):
             try:
-                youtube = build('youtube', 'v3', developerKey=API_KEY)
+                youtube = get_youtube_service()
                 handle_match = re.search(r'youtube\.com\/@([\w.-]+)', channel_url_gr)
                 channel_id = None
                 if handle_match:
