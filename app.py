@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 import re
 import time
 import bcrypt
+from datetime import datetime
+import traceback
+import logging
 
 # Optional dependency untuk Audience Intelligence semantic clustering.
 # Install jika ingin mengaktifkan fitur ini:
@@ -26,9 +29,78 @@ except Exception:
     API_KEY = "AIzaSyCoTQTLR8YCopYzHOV-f9a5mY4y9KXT7GA"  # fallback lokal
 
 try:
-    GROQ_API_KEY = st.secrets["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"]
+    GROQ_API_KEY = st.secrets["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"]
 except Exception:
-    GROQ_API_KEY = "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"
+    GROQ_API_KEY = "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"
+
+# --- ERROR LOGGING ---
+# Logging ringan untuk membantu debug tanpa mengubah alur fitur utama.
+# Log disimpan di st.session_state dan juga dikirim ke Python logger.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+
+def log_event(level, source, message, detail=None):
+    """Simpan log ringkas ke session_state + Python logger."""
+    try:
+        if "app_error_logs" not in st.session_state:
+            st.session_state.app_error_logs = []
+
+        entry = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "level": str(level).upper(),
+            "source": str(source),
+            "message": str(message),
+            "detail": str(detail)[:2000] if detail else "",
+        }
+
+        st.session_state.app_error_logs.append(entry)
+        st.session_state.app_error_logs = st.session_state.app_error_logs[-80:]
+
+        log_line = f"[{entry['source']}] {entry['message']}"
+        if entry["level"] == "ERROR":
+            logging.error(log_line)
+        elif entry["level"] == "WARNING":
+            logging.warning(log_line)
+        else:
+            logging.info(log_line)
+    except Exception:
+        # Logging tidak boleh membuat aplikasi crash.
+        pass
+
+def log_exception(source, exc):
+    """Catat exception lengkap, tapi tetap aman untuk UI."""
+    try:
+        log_event(
+            "ERROR",
+            source,
+            str(exc),
+            traceback.format_exc()
+        )
+    except Exception:
+        pass
+
+def render_error_log_sidebar():
+    """Tampilkan log error di sidebar agar debug lebih mudah."""
+    try:
+        logs = st.session_state.get("app_error_logs", [])
+        with st.sidebar.expander(f"🧾 Error Log ({len(logs)})", expanded=False):
+            if not logs:
+                st.caption("Belum ada error yang tercatat.")
+            else:
+                if st.button("Clear Error Log", use_container_width=True):
+                    st.session_state.app_error_logs = []
+                    st.rerun()
+
+                for item in reversed(logs[-15:]):
+                    level_icon = "🔴" if item["level"] == "ERROR" else ("🟡" if item["level"] == "WARNING" else "🔵")
+                    st.markdown(f"{level_icon} **{item['level']}** — `{item['source']}`")
+                    st.caption(item["time"])
+                    st.write(item["message"])
+                    if item.get("detail"):
+                        with st.expander("Detail teknis", expanded=False):
+                            st.code(item["detail"][:2000])
+                    st.divider()
+    except Exception:
+        pass
 
 # --- CACHE SETTINGS ---
 # Cache ringan untuk mengurangi pemanggilan berulang ke YouTube API.
@@ -64,6 +136,7 @@ def call_groq(prompt, max_tokens=1500):
         else:
             return None, f"Groq error: {resp.status_code} — {resp.text[:200]}"
     except Exception as e:
+        log_exception("call_groq", e)
         return None, str(e)
 
 def extract_video_id(url_or_id):
@@ -121,6 +194,7 @@ def analyze_virality(video_id):
             "published_at": published_at,
         }
     except Exception as e:
+        log_exception("analyze_virality", e)
         st.error(f"Terjadi kesalahan teknis: {e}")
         return None
 
@@ -527,6 +601,7 @@ def scrape_real_issues(topic, tags):
                     "tipe": "referensi"
                 })
     except Exception as e:
+        log_exception("scrape_real_issues.wikipedia", e)
         debug_log.append(f"Wikipedia API: error — {e}")
 
     # --- Sumber 2: Bing Search ---
@@ -547,6 +622,7 @@ def scrape_real_issues(topic, tags):
                         "tipe": "web"
                     })
     except Exception as e:
+        log_exception("scrape_real_issues.bing_search", e)
         debug_log.append(f"Bing Search: error — {e}")
 
     # --- Sumber 3: Bing News RSS ---
@@ -568,6 +644,7 @@ def scrape_real_issues(topic, tags):
                         "tipe": "berita"
                     })
     except Exception as e:
+        log_exception("scrape_real_issues.bing_news", e)
         debug_log.append(f"Bing News RSS: error — {e}")
 
     # --- Sumber 4: DuckDuckGo HTML ---
@@ -588,6 +665,7 @@ def scrape_real_issues(topic, tags):
                             "tipe": "web"
                         })
         except Exception as e:
+            log_exception("scrape_real_issues.duckduckgo", e)
             debug_log.append(f"DuckDuckGo: error — {e}")
 
     return results[:8], debug_log
@@ -728,6 +806,12 @@ if st.sidebar.button("🚪 Logout"):
 st.sidebar.markdown(f"👤 Login sebagai: **{st.session_state.username}**")
 st.sidebar.divider()
 
+# --- PENYESUAIAN POSISI MENU SIDEBAR ---
+# Memberi ruang vertikal agar dropdown "Pilih Mode Analisis"
+# berada sedikit lebih naik dari versi sebelumnya, tetapi tetap cukup turun
+# supaya daftar menu tidak terpotong saat dibuka.
+st.sidebar.markdown("<div style='height: 245px;'></div>", unsafe_allow_html=True)
+
 st.title("🚀 YouTube Viral Analyser Pro")
 st.markdown("Bongkar rahasia algoritma YouTube. **Cukup paste link video Anda!**")
 
@@ -739,6 +823,8 @@ st.sidebar.divider()
 if st.sidebar.button("🔄 Reset / Clear Halaman", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
+
+render_error_log_sidebar()
 
 # ============================================================
 # FUNGSI GLOBAL: HOOK & NARRATIVE ANALYSER
@@ -1023,6 +1109,7 @@ def get_narrative_data(url_or_id):
         return {"name": name, "videos": videos}
 
     except Exception as e:
+        log_exception("get_narrative_data", e)
         st.error(f"Error get_narrative_data: {e}")
         return None
 
@@ -1244,6 +1331,7 @@ def semantic_comment_clustering(comments_data, max_clusters=5):
         return sorted(clusters, key=lambda x: x["size"], reverse=True)
 
     except Exception as e:
+        log_exception("semantic_comment_clustering", e)
         st.warning(f"Semantic clustering gagal, memakai analisis komentar biasa. Detail: {e}")
         return []
 
@@ -1631,6 +1719,7 @@ elif mode == "Competitor Tracker 🕵️":
                 "upload_days": upload_days,
             }
         except Exception as e:
+            log_exception("analyze_channel", e)
             st.error(f"Error menganalisis channel: {e}")
             return None
 
@@ -2058,6 +2147,7 @@ elif mode == "Monetization Estimator 💰":
                             "detected_monthly_uploads": detected_monthly_uploads,
                         }
                     except Exception as e:
+                        log_exception("get_channel_monetization_data", e)
                         st.error(f"Error: {e}")
                         return None
 
@@ -3010,6 +3100,7 @@ Tags yang sering dipakai: {', '.join(list(set(all_tags))[:20])}
                         else:
                             st.error("Channel tidak ditemukan.")
                 except Exception as e:
+                    log_exception("audience_intelligence.channel_data", e)
                     st.error(f"Error mengambil data: {e}")
 
         niche_context = f"Niche/Topik: {niche_manual}" if has_niche else ""
@@ -3307,6 +3398,7 @@ elif mode == "Channel Growth Roadmap 🗺️":
                 avg_views = sum(v['views'] for v in videos_gr) / len(videos_gr) if videos_gr else 0
 
             except Exception as e:
+                log_exception("channel_growth_roadmap", e)
                 st.error(f"Error: {e}")
                 st.stop()
 
